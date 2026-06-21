@@ -1,0 +1,70 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  // binaryTargets выше обязателен, чтобы Prisma понимала 
+  // и твой Мак (native), и Linux внутри докера (debian)
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  name         String?
+  projects     Project[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Project {
+  id                   String               @id @default(uuid())
+  behanceId            String               @unique // ID кейса из урла Behance
+  title                String
+  url                  String
+  views                Int                  @default(0)
+  appreciations        Int                  @default(0) // Лайки
+  userId               String
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tags                 ProjectTag[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  tagPositionHistories TagPositionHistory[]
+}
+
+model Tag {
+  id                   String               @id @default(uuid())
+  name                 String               @unique // Сам тег (всегда в нижнем регистре)
+  projects             ProjectTag[]
+  createdAt            DateTime             @default(now())
+  tagPositionHistories TagPositionHistory[]
+}
+
+model ProjectTag {
+  projectId   String
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tagId       String
+  tag         Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  currentRank Int? // Текущее место по этому тегу в поиске (null — если вне топа)
+
+  // ИСПРАВЛЕНИЕ: Добавили @default(now()), чтобы старые 7 строк получили текущую дату при миграции
+  updatedAt DateTime @default(now()) @updatedAt
+
+  createdAt DateTime @default(now())
+
+  @@id([projectId, tagId]) // Композитный первичный ключ
+}
+
+model TagPositionHistory {
+  id        String   @id @default(uuid())
+  projectId String
+  tagId     String
+  rank      Int // Какое место занимал пост
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+}
