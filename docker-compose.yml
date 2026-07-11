@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Наша база данных PostgreSQL
+  # База данных PostgreSQL
   postgres:
     image: postgres:15-alpine
     container_name: behance_postgres
@@ -32,16 +32,14 @@ services:
     restart: always
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
-
       - PORT=3000
-      - DATABASE_URL=postgresql://vladkharin:2001@postgres:5432/behance_tags_db?schema=public
+      # Указываем хосты внутри сети Docker
+      - DATABASE_URL=postgresql://vladharin:2001@postgres:5432/behance_tags_db?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - PROXY_HOST=proxy.asocks.com
-      - PROXY_PORT=9000
-      - PROXY_USERNAME=user_sub_xxxxxx
-      - PROXY_PASSWORD=your_asocks_password
     depends_on:
       - postgres
       - redis

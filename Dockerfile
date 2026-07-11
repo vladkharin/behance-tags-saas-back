@@ -1,37 +1,29 @@
-FROM node:22-slim
+# Используем образ с установленным Chromium и зависимостями
+FROM ghcr.io/puppeteer/puppeteer:22.10.0
 
-# Устанавливаем системные зависимости для работы Puppeteer (Chromium) внутри Linux
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    ca-certificates \
-    procps \
-    libxss1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libgtk-3-0 \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+USER root
 
-# Создаем рабочую директорию
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копируем файлы зависимостей
-COPY package.json yarn.lock ./
+# Копируем конфиги зависимостей
+COPY package*.json ./
+COPY yarn.lock ./
 
-# Устанавливаем зависимости через Yarn
-RUN yarn install --frozen-lockfile
+# Устанавливаем зависимости (пропускаем установку встроенного браузера, он уже есть в образе)
+RUN npm install
 
-# Копируем схему Prisma и генерируем клиент
-COPY prisma ./prisma/
+# Копируем весь код проекта
+COPY . .
+
+# Генерируем клиент Prisma
 RUN npx prisma generate
 
-# Копируем весь остальной код и собираем проект
-COPY . .
-RUN yarn build
+# Собираем проект
+RUN npm run build
 
-# Открываем порт
+# Открываем порт NestJS
 EXPOSE 3000
 
-# Команда запуска (миграции + старт приложения)
-CMD ["sh", "-c", "npx prisma migrate deploy && yarn start:prod"]
+# Запуск приложения
+CMD ["npm", "run", "start:prod"]
