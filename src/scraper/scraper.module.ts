@@ -9,18 +9,22 @@ import { ScraperService } from './scraper.service';
 import { ScraperController } from './scraper.controller';
 import { ScraperProcessor } from './scraper.processor';
 import { PrismaModule } from '../prisma/prisma.module';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
     PrismaModule,
 
     // 1. Конфигурируем подключение к Redis
-    BullModule.forRoot({
-      connection: {
-        host: 'localhost',
-        port: 6379,
-      },
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          host: config.get('REDIS_HOST') || 'localhost',
+          port: config.get<number>('REDIS_PORT') || 6379,
+        },
+      }),
+      inject: [ConfigService],
     }),
 
     // 2. Регистрируем саму очередь задач
