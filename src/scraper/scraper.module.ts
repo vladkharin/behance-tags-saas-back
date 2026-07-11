@@ -1,25 +1,46 @@
+// src/scraper/scraper.module.ts
+
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { BullBoardModule } from '@bull-board/nestjs'; // Импорт
+import { ExpressAdapter } from '@bull-board/express'; // Импорт
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'; // Импорт адаптера
 import { ScraperService } from './scraper.service';
 import { ScraperController } from './scraper.controller';
 import { ScraperProcessor } from './scraper.processor';
-import { PrismaModule } from '../prisma/prisma.module'; // <-- Добавь этот импорт (путь может немного отличаться, проверь у себя)
+import { PrismaModule } from '../prisma/prisma.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
-    PrismaModule, // <-- Добавь PrismaModule сюда, чтобы ScraperService видел PrismaService!
+    PrismaModule,
 
-    // Конфигурируем подключение к Redis
+    // 1. Конфигурируем подключение к Redis
     BullModule.forRoot({
       connection: {
         host: 'localhost',
         port: 6379,
       },
     }),
-    // Регистрируем саму очередь задач
+
+    // 2. Регистрируем саму очередь задач
     BullModule.registerQueue({
       name: 'scraper-queue',
     }),
+
+    // 3. Инициализируем глобальный UI админки
+    BullBoardModule.forRoot({
+      route: '/admin/queues', // Адрес: http://localhost:3000/admin/queues
+      adapter: ExpressAdapter,
+    }),
+
+    // 4. Добавляем нашу конкретную очередь в этот UI
+    BullBoardModule.forFeature({
+      name: 'scraper-queue',
+      adapter: BullMQAdapter,
+    }),
+
+    ConfigModule,
   ],
   controllers: [ScraperController],
   providers: [ScraperService, ScraperProcessor],

@@ -10,6 +10,12 @@ generator client {
   // и твой Мак (native), и Linux внутри докера (debian)
 }
 
+enum AnalysisStatus {
+  IDLE
+  PENDING
+  PROCESSING
+}
+
 model User {
   id           String    @id @default(uuid())
   email        String    @unique
@@ -32,6 +38,7 @@ model Project {
   tags                 ProjectTag[]
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
+  analysisStatus       AnalysisStatus       @default(IDLE)
   tagPositionHistories TagPositionHistory[]
 }
 
@@ -49,6 +56,7 @@ model ProjectTag {
   tagId       String
   tag         Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
   currentRank Int? // Текущее место по этому тегу в поиске (null — если вне топа)
+  onChart     Boolean @default(false)
 
   // ИСПРАВЛЕНИЕ: Добавили @default(now()), чтобы старые 7 строк получили текущую дату при миграции
   updatedAt DateTime @default(now()) @updatedAt

@@ -11,22 +11,29 @@ export class ScraperProcessor extends WorkerHost {
     super();
   }
 
-  // Сюда прилетают задачи из очереди
   async process(job: Job<any, any, string>): Promise<any> {
-    this.logger.log(
-      `[Queue] Начинаем обработку задачи #${job.id} класса [${job.name}]`,
-    );
+    this.logger.log(`[Queue] Запуск задачи #${job.id} [${job.name}]`);
 
     switch (job.name) {
+      case 'import-project': {
+        const { projectId, url, userId } = job.data;
+        return await this.scraperService.importCaseLogic(
+          projectId,
+          url,
+          userId,
+        );
+      }
+
       case 'analyze-project': {
-        const { projectId } = job.data;
-        // Просто вызываем наш готовый метод парсинга
-        return await this.scraperService.analyzeProjectPositions(projectId);
+        const { projectId, tags } = job.data;
+        return await this.scraperService.analyzeProjectPositions(
+          projectId,
+          tags,
+        );
       }
 
       default:
-        this.logger.warn(`[Queue] Неизвестный тип задачи: ${job.name}`);
-        break;
+        this.logger.warn(`Неизвестная задача: ${job.name}`);
     }
   }
 }

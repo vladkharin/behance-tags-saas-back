@@ -5,6 +5,10 @@ import {
   BadRequestException,
   Param,
   Get,
+  Delete,
+  Query,
+  Logger,
+  Patch,
 } from '@nestjs/common';
 import { ScraperService } from './scraper.service';
 
@@ -12,38 +16,84 @@ import { ScraperService } from './scraper.service';
 export class ScraperController {
   constructor(private readonly scraperService: ScraperService) {}
 
+  /**
+   * 1. Импорт нового кейса
+   */
   @Post('import-case')
-  async importCase(
-    @Body('url') url: string,
-    @Body('userId') userId: string, // Пока авторизации нет, передаем userId в теле запроса вручную для тестов
-  ) {
-    if (!url) {
-      throw new BadRequestException('Параметр url обязателен');
-    }
-    if (!userId) {
-      throw new BadRequestException('Параметр userId обязателен');
-    }
+  async importCase(@Body('url') url: string, @Body('userId') userId: string) {
+    if (!url || !userId)
+      throw new BadRequestException('URL и userId обязательны');
 
-    // Изменили название метода на importCase, чтобы он соответствовал сервису
-    return this.scraperService.importCase(url, userId);
+    // Теперь это асинхронно через очередь
+    return this.scraperService.queueImportCase(url, userId);
   }
 
   @Post(':id/analyze')
-  async analyze(@Param('id') projectId: string) {
-    return await this.scraperService.analyzeProjectPositions(projectId);
+  async analyze(@Param('id') projectId: string, @Body('tags') tags?: string[]) {
+    await this.scraperService.queueProjectAnalysis(projectId, tags);
+    return { success: true, message: 'Задача на анализ добавлена в очередь' };
   }
 
+  /**
+   * 3. ПОЛУЧЕНИЕ ИСТОРИИ ПО ОДНОМУ КЕЙСУ
+   * Используется для построения графиков на фронтенде
+   */
   @Get(':id/history')
   async getHistory(@Param('id') projectId: string) {
     return await this.scraperService.getProjectAnalyticsHistory(projectId);
   }
 
+  /**
+   * 4. Общая аналитика пользователя (Matrix)
+   * ИСПРАВЛЕНО: Изменено с @Body на @Query, так как это GET запрос
+   */
   @Get('analytics')
-  async getAnalyticsData(@Body('userId') userId: string) {
-    // Когда прикрутишь полноценную JWT-авторизацию, userId будешь брать из @Req() req.user.id
+  async getAnalyticsData(@Query('userId') userId: string) {
     if (!userId) {
       throw new BadRequestException('userId обязателен');
     }
     return await this.scraperService.getAnalytics(userId);
+  }
+
+  /**
+   * 5. Список всех проектов пользователя
+   */
+  @Get('projects')
+  async getMyProjects(@Query('userId') userId: string) {
+    if (!userId) {
+      throw new BadRequestException('userId обязателен');
+    }
+    return await this.scraperService.getUserProjects(userId);
+  }
+
+  /**
+   * 6. Удаление проекта
+   */
+  @Delete('projects/:id')
+  async deleteMyProject(
+    @Param('id') projectId: string,
+    @Query('userId') userId: string,
+  ) {
+    if (!userId) {
+      throw new BadRequestException('userId обязателен');
+    }
+    return await this.scraperService.deleteProject(projectId, userId);
+  }
+
+  @Get('project/:id')
+  async getSingleProject(@Param('id') projectId: string) {
+    return await this.scraperService.getSingleProjectAnalytics(projectId);
+  }
+
+  @Patch(':id/tags/chart')
+  async toggleTag(
+    @Param('id') projectId: string,
+    @Body() body: { tagName: string; state: boolean },
+  ) {
+    return await this.scraperService.toggleTagOnChart(
+      projectId,
+      body.tagName,
+      body.state,
+    );
   }
 }
