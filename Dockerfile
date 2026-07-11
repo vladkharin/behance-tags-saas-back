@@ -1,56 +1,52 @@
 # --- Этап 1: Сборка ---
-FROM node:22-bullseye-slim AS builder
+FROM node:22-bullseye AS builder
 
 WORKDIR /app
 
-# Устанавливаем системные зависимости для сборки и работы с архивами
-RUN apt-get update && apt-get install -y \
-    openssl \
-    python3 \
-    make \
-    g++ \
-    tar \
-    unzip \
-    && rm -rf /var/lib/apt/lists/*
+# Системные зависимости
+RUN apt-get update && apt-get install -y openssl python3 make g++
 
-# Запрещаем скачивание браузера на всех уровнях
+# Запрещаем скачивание браузера
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Устанавливаем зависимости, игнорируя скрипты Puppeteer (чтобы он не лез качать Chrome)
-RUN npm install --ignore-scripts
+# Устанавливаем зависимости
+RUN npm install
 
 COPY . .
 
-# Генерируем Prisma вручную (так как мы игнорировали скрипты)
+# Генерируем Prisma и собираем проект
 RUN npx prisma generate
 RUN npm run build
 
-# --- Этап 2: Запуск (Prod) ---
-FROM ghcr.io/puppeteer/puppeteer:latest
+# Проверяем, куда NestJS положил файл (выведется в логах сборки)
+RUN ls -R dist
+
+# --- Этап 2: Запуск ---
+FROM ghcr.io/puppeteer/puppeteer:23.0.2
 
 USER root
 WORKDIR /app
 
-# Повторяем запрет на скачивание
+# Настройки для Puppeteer
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
-# Копируем результаты сборки
+# Копируем всё необходимое
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
 
-# Указываем путь к Chrome, который УЖЕ есть в этом образе
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+# Даем права пользователю
+RUN chown -R pptruser:pptruser /app
 
 EXPOSE 3000
 
-# Запуск от имени специального пользователя для безопасности
 USER pptruser
 
-CMD ["node", "dist/main.js"]
+# Попробуем запустить без .js (node сам найдет нужный файл в dist)
+CMD ["node", "dist/main"]
