@@ -12,7 +12,7 @@ import { Queue } from 'bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { AnalysisStatus } from '@prisma/client';
 
 puppeteer.use(StealthPlugin());
@@ -44,7 +44,7 @@ export class ScraperService {
     const user = this.configService.get<string>('PROXY_USERNAME') || '';
     const pass = this.configService.get<string>('PROXY_PASSWORD') || '';
 
-    const sessionId = uuidv4().substring(0, 8);
+    const sessionId = randomUUID().substring(0, 8);
     const dynamicUser = `${user}-session-${sessionId}`;
 
     const browser = await puppeteer.launch({
@@ -93,7 +93,7 @@ export class ScraperService {
    */
   async queueImportCase(url: string, userId: string) {
     const idMatch = url.match(/gallery\/([0-9]+)/);
-    const behanceId = idMatch ? idMatch[1] : `pending-${uuidv4()}`;
+    const behanceId = idMatch ? idMatch[1] : `pending-${randomUUID()}`;
 
     const project = await this.prisma.project.upsert({
       where: { behanceId },
