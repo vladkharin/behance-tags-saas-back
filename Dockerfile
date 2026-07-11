@@ -1,15 +1,18 @@
 # --- Этап 1: Сборка ---
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# Устанавливаем зависимости для сборки (нужны для Prisma и некоторых модулей)
+# Устанавливаем системные зависимости для Prisma
 RUN apt-get update && apt-get install -y openssl python3 make g++
+
+# Отключаем загрузку браузера при npm install (сэкономит время и место)
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Устанавливаем ВСЕ зависимости (включая dev)
+# Устанавливаем зависимости
 RUN npm install
 
 # Копируем исходный код
@@ -20,24 +23,27 @@ RUN npx prisma generate
 RUN npm run build
 
 # --- Этап 2: Запуск (Prod) ---
-FROM ghcr.io/puppeteer/puppeteer:22.10.0
+# Используем свежий образ Puppeteer, подходящий под Node 22
+FROM ghcr.io/puppeteer/puppeteer:23.0.2
 
 USER root
 WORKDIR /app
 
-# Копируем из первого этапа только то, что нужно для работы
+# Отключаем загрузку браузера и здесь
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
+# Копируем из первого этапа только то, что нужно
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
 
-# Проверяем права (на всякий случай)
-RUN chown -R pptruser:pptruser /app
-
-# Переключаемся на пользователя puppeteer для безопасности
-USER pptruser
+# На сервере Puppeteer должен использовать системный Chrome, установленный в этом образе
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 EXPOSE 3000
 
-# Запуск через node напрямую (так стабильнее в Docker)
+# Запуск через пользователя pptruser для безопасности
+USER pptruser
+
 CMD ["node", "dist/main"]
