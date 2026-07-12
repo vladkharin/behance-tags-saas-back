@@ -33,5 +33,5 @@ RUN chown -R pptruser:pptruser /app
 EXPOSE 3000
 USER pptruser
 
-# ВОТ ТУТ МЫ ИСПРАВИЛИ ПУТЬ:
+# Запускаем из папки src внутри dist (как показал твой find)
 CMD ["node", "dist/src/main.js"]
