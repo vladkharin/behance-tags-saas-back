@@ -12,14 +12,12 @@ import { Queue } from 'bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
 // ИСПРАВЛЕННЫЙ ИМПОРТ ДЛЯ DOCKER
-import { addExtra } from 'puppeteer-extra';
-import * as puppeteerCore from 'puppeteer-core';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 import { randomUUID } from 'crypto';
+import puppeteer from 'puppeteer-extra';
 import { AnalysisStatus } from '@prisma/client';
 
-const puppeteer = addExtra(puppeteerCore as any);
 puppeteer.use(StealthPlugin());
 
 interface SearchResult {
