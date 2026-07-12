@@ -39,7 +39,7 @@
     "https-proxy-agent": "^9.1.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
-    "puppeteer": "^25.1.0",
+    "puppeteer": "^25.3.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "reflect-metadata": "^0.2.2",
