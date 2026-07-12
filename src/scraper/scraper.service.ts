@@ -10,11 +10,17 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import puppeteer from 'puppeteer-extra';
+
+// ИСПРАВЛЕННЫЙ ИМПОРТ ДЛЯ DOCKER:
+import { addExtra } from 'puppeteer-extra';
+import * as puppeteerCore from 'puppeteer-core';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+
 import { randomUUID } from 'crypto';
 import { AnalysisStatus } from '@prisma/client';
 
+// Явно связываем extra и core
+const puppeteer = addExtra(puppeteerCore as any);
 puppeteer.use(StealthPlugin());
 
 interface SearchResult {
@@ -36,7 +42,7 @@ export class ScraperService {
   ) {}
 
   /**
-   * Инициализация браузера (Оптимизировано для обхода 403 и экономии трафика)
+   * Инициализация браузера
    */
   private async initBrowser() {
     const host = this.configService.get<string>('PROXY_HOST') || '';
@@ -49,6 +55,10 @@ export class ScraperService {
 
     const browser = await puppeteer.launch({
       headless: true,
+      // Явно указываем путь к Chrome в Docker-образе
+      executablePath:
+        process.env.PUPPETEER_EXECUTABLE_PATH ||
+        '/usr/bin/google-chrome-stable',
       ignoreDefaultArgs: ['--enable-automation'],
       args: [
         `--proxy-server=http://${host}:${port}`,
@@ -61,7 +71,6 @@ export class ScraperService {
 
     const page = await browser.newPage();
 
-    // ПЕРЕХВАТ: Блокируем мусор, разрешаем API и скрипты Behance
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const type = request.resourceType();
@@ -89,7 +98,7 @@ export class ScraperService {
   }
 
   /**
-   * ПРОДЮСЕР ИМПОРТА (Контроллер)
+   * ИМПОРТ КЕЙСА
    */
   async queueImportCase(url: string, userId: string) {
     const idMatch = url.match(/gallery\/([0-9]+)/);
@@ -115,9 +124,6 @@ export class ScraperService {
     return project;
   }
 
-  /**
-   * ПРОДЮСЕР АНАЛИЗА (Контроллер)
-   */
   async queueProjectAnalysis(projectId: string, tags?: string[]) {
     await this.prisma.project.update({
       where: { id: projectId },
@@ -130,9 +136,6 @@ export class ScraperService {
     );
   }
 
-  /**
-   * ВОРКЕР: Логика импорта
-   */
   async importCaseLogic(projectId: string, url: string, userId: string) {
     await this.prisma.project.update({
       where: { id: projectId },
@@ -149,13 +152,13 @@ export class ScraperService {
         this.logger.log(`[Import] Попытка ${attempt} для ${url}`);
         await page.goto('https://www.behance.net/search/projects', {
           waitUntil: 'networkidle2',
-          timeout: 30000,
+          timeout: 45000,
         });
         await new Promise((r) => setTimeout(r, 6000));
 
         const cookies = await page.cookies();
         const bcp = cookies.find((c) => c.name === 'bcp')?.value || '';
-        const behanceIdFromUrl = url.match(/gallery\/([0-9]+)/)?.[1];
+        const idFromUrl = url.match(/gallery\/([0-9]+)/)?.[1];
 
         const data = await page.evaluate(
           async (id, bcpToken) => {
@@ -179,11 +182,11 @@ export class ScraperService {
             const res = Array.isArray(json) ? json[0] : json;
             return res.data?.project;
           },
-          behanceIdFromUrl,
+          idFromUrl,
           bcp,
         );
 
-        if (!data) throw new Error('Empty API response');
+        if (!data) throw new Error('API return empty project');
 
         await this.prisma.$transaction(async (tx) => {
           await tx.project.update({
@@ -198,6 +201,7 @@ export class ScraperService {
           await tx.projectTag.deleteMany({ where: { projectId } });
           for (const t of data.tags) {
             const name = t.title.trim().toLowerCase();
+            if (!name) continue;
             const tRec = await tx.tag.upsert({
               where: { name },
               update: {},
@@ -209,7 +213,7 @@ export class ScraperService {
 
         success = true;
         await browser.close();
-        this.logger.log(`[Import] ✅ Успешно. Запускаю анализ.`);
+        this.logger.log(`[Import] ✅ УСПЕХ.`);
         await this.queueProjectAnalysis(projectId);
       } catch (e) {
         await browser.close();
@@ -225,9 +229,6 @@ export class ScraperService {
     }
   }
 
-  /**
-   * ВОРКЕР: Логика анализа
-   */
   async analyzeProjectPositions(projectId: string, customTags?: string[]) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -249,7 +250,6 @@ export class ScraperService {
       .filter((t) => t.length > 0)
       .sort();
 
-    // Сброс всех тегов в null перед стартом (Checking...)
     for (const name of combinedTags) {
       const tagRec = await this.prisma.tag.upsert({
         where: { name },
@@ -275,7 +275,6 @@ export class ScraperService {
           try {
             if (!instance) {
               instance = await this.initBrowser();
-              this.logger.log(`[Analytics] Прогрев IP: ${instance.sessionId}`);
               await instance.page.goto(
                 'https://www.behance.net/search/projects',
                 { waitUntil: 'networkidle2', timeout: 45000 },
@@ -285,11 +284,8 @@ export class ScraperService {
 
             const cookies = await instance.page.cookies();
             const bcp = cookies.find((c) => c.name === 'bcp')?.value || '';
-            if (!bcp) throw new Error('BCP missing');
-
             const ids = await instance.page.evaluate(
               async (term, bcpToken) => {
-                // ИСПОЛЬЗУЕМ ТОЛЬКО ТЕ ПЕРЕМЕННЫЕ, КОТОРЫЕ ОБЪЯВЛЕНЫ
                 const query = `query ProjectsSearchPage($query: query, $filter: SearchResultFilter, $first: Int!) {
                 search(query: $query, type: PROJECT, filter: $filter, first: $first, alwaysHasNext: true) {
                   nodes { ... on Project { id } }
@@ -305,7 +301,7 @@ export class ScraperService {
                     'x-requested-with': 'XMLHttpRequest',
                   },
                   body: JSON.stringify({
-                    query,
+                    query: SEARCH_QUERY,
                     variables: { query: term, filter: {}, first: 48 },
                   }),
                 });
@@ -323,7 +319,7 @@ export class ScraperService {
               ids.indexOf(project.behanceId) !== -1
                 ? ids.indexOf(project.behanceId) + 1
                 : -1;
-            const tagRecord = await this.prisma.tag.findUnique({
+            const tagRec = await this.prisma.tag.findUnique({
               where: { name: tagName },
             });
 
@@ -331,14 +327,14 @@ export class ScraperService {
               where: {
                 projectId_tagId: {
                   projectId: project.id,
-                  tagId: tagRecord!.id,
+                  tagId: tagRec!.id,
                 },
               },
               data: { currentRank: rank, updatedAt: new Date() },
             });
             if (rank !== -1) {
               await this.prisma.tagPositionHistory.create({
-                data: { projectId: project.id, tagId: tagRecord!.id, rank },
+                data: { projectId: project.id, tagId: tagRec!.id, rank },
               });
             }
             tagSuccess = true;
@@ -351,32 +347,28 @@ export class ScraperService {
             await new Promise((r) => setTimeout(r, 4000));
           }
         }
-
-        // Если все попытки для тега провалены, ставим -1 чтобы не вешать поллинг
         if (!tagSuccess) {
-          const tagRecord = await this.prisma.tag.findUnique({
+          const tagRec = await this.prisma.tag.findUnique({
             where: { name: tagName },
           });
           await this.prisma.projectTag.update({
             where: {
-              projectId_tagId: { projectId: project.id, tagId: tagRecord!.id },
+              projectId_tagId: { projectId: project.id, tagId: tagRec!.id },
             },
             data: { currentRank: -1 },
           });
         }
       }
+      if (instance) await instance.browser.close();
     } finally {
-      // ВОЗВРАЩАЕМ В IDLE - ЭТО ОСТАНОВИТ ПОЛЛИНГ НА ФРОНТЕ
       await this.prisma.project.update({
         where: { id: projectId },
         data: { analysisStatus: AnalysisStatus.IDLE },
       });
-      if (instance) await instance.browser.close();
     }
   }
 
-  // --- МЕТОДЫ ПОЛУЧЕНИЯ ДАННЫХ (API) ---
-
+  // Методы получения данных (getUserProjects и т.д.) оставить без изменений
   async getSingleProjectAnalytics(projectId: string) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -443,36 +435,5 @@ export class ScraperService {
       where: { projectId_tagId: { projectId, tagId: tag.id } },
       data: { onChart: state },
     });
-  }
-
-  async getAnalytics(userId: string) {
-    const projectTags = await this.prisma.projectTag.findMany({
-      where: { project: { userId } },
-      include: { project: true, tag: true },
-    });
-    const tagsMap: Record<string, any> = {};
-    for (const pt of projectTags) {
-      const name = pt.tag.name;
-      if (!tagsMap[name])
-        tagsMap[name] = {
-          tag: name,
-          totalViews: 0,
-          totalAppreciations: 0,
-          count: 0,
-          currentRank: pt.currentRank,
-        };
-      tagsMap[name].totalViews += pt.project.views;
-      tagsMap[name].totalAppreciations += pt.project.appreciations;
-      tagsMap[name].count += 1;
-    }
-    const activeProject = await this.prisma.project.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
-    return {
-      user: { id: userId },
-      activeProject,
-      tagsMatrix: Object.values(tagsMap),
-    };
   }
 }
