@@ -317,7 +317,11 @@ export class ScraperService {
     await this.scraperQueue.add(
       'analyze-project',
       { projectId, tags },
-      { removeOnComplete: true },
+      {
+        jobId: projectId, // <--- КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
     );
   }
 
