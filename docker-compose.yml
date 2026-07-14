@@ -44,5 +44,16 @@ services:
       - postgres
       - redis
 
+  prisma-studio:
+    image: node:20-alpine # используй тот же образ, что для билда бэкенда
+    working_dir: /app
+    volumes:
+      - .:/app # Монтируем папку с кодом, чтобы студия видела schema.prisma
+    environment:
+      - DATABASE_URL=postgresql://vladharin:2001@postgres:5432/behance_tags_db?schema=public # Берем URL базы из .env
+    ports:
+      - "5555:5555"
+    command: npx prisma studio --browser none --hostname 0.0.0.0
+
 volumes:
   postgres_data:
