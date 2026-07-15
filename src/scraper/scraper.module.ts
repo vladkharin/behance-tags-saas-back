@@ -22,6 +22,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         connection: {
           host: config.get('REDIS_HOST') || 'localhost',
           port: config.get<number>('REDIS_PORT') || 6379,
+          // Добавляем пароль из переменных окружения
+          password:
+            config.get<string>('REDIS_PASSWORD') ||
+            'vladMatrixScraper777SafePassword',
         },
       }),
       inject: [ConfigService],
