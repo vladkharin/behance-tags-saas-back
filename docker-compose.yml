@@ -21,7 +21,7 @@ services:
     container_name: behance_redis
     restart: always
     # Устанавливаем пароль при запуске
-    command: redis-server --requirepass "Bz8#pL2!kR9*zT4$mP1&qW7^xY3sM6vB"
+    command: ["redis-server", "--requirepass", "vladMatrixScraper777SafePassword"]
     ports:
       # Теперь порт 6379 не торчит в интернет. 
       # Он доступен только твоему бэкенду внутри Docker и тебе лично на этом компьютере.
