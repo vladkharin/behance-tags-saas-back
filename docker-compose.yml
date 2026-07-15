@@ -15,13 +15,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # Кэш и очереди Redis
+  # Кэш и очереди Redis (Защищенный)
   redis:
     image: redis:7-alpine
     container_name: behance_redis
     restart: always
+    # Устанавливаем пароль при запуске
+    command: redis-server --requirepass "Bz8#pL2!kR9*zT4$mP1&qW7^xY3sM6vB"
     ports:
-      - "6379:6379"
+      # Теперь порт 6379 не торчит в интернет. 
+      # Он доступен только твоему бэкенду внутри Docker и тебе лично на этом компьютере.
+      - "127.0.0.1:6379:6379"
 
   # Наш NestJS бэкенд
   api:
@@ -36,10 +40,11 @@ services:
       - .env
     environment:
       - PORT=3000
-      # Указываем хосты внутри сети Docker
       - DATABASE_URL=postgresql://vladharin:2001@postgres:5432/behance_tags_db?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # Прокидываем пароль в переменные окружения бэкенда
+      - REDIS_PASSWORD=Bz8#pL2!kR9*zT4$mP1&qW7^xY3sM6vB
     depends_on:
       - postgres
       - redis

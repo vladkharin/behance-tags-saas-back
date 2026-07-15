@@ -4,9 +4,10 @@ import { AppService } from './app.service';
 import { ScraperModule } from './scraper/scraper.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
-  imports: [ScraperModule, PrismaModule, AuthModule],
+  imports: [ScheduleModule.forRoot(), ScraperModule, PrismaModule, AuthModule],
   controllers: [AppController],
   providers: [AppService],
 })
