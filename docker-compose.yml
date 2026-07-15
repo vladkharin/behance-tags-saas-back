@@ -44,7 +44,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       # Прокидываем пароль в переменные окружения бэкенда
-      - REDIS_PASSWORD=Bz8#pL2!kR9*zT4$mP1&qW7^xY3sM6vB
+      - REDIS_PASSWORD=vladMatrixScraper777SafePassword
     depends_on:
       - postgres
       - redis
