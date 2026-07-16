@@ -369,15 +369,25 @@ export class ScraperService {
   }
 
   async queueProjectAnalysis(projectId: string, tags?: string[]) {
+    // 1. Сначала обновляем статус в БД
     await this.prisma.project.update({
       where: { id: projectId },
       data: { analysisStatus: AnalysisStatus.PENDING },
     });
-    await this.scraperQueue.add('analyze-project', {
-      jobId: projectId, // <--- КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
-      removeOnComplete: true,
-      removeOnFail: true,
-    });
+
+    // 2. Добавляем в очередь
+    await this.scraperQueue.add(
+      'analyze-project',
+      {
+        projectId: projectId, // Ключ должен называться projectId (как ждет воркер)
+        tags: tags, // Передаем теги, иначе ручной анализ придет пустым
+      },
+      {
+        jobId: `analyze-${projectId}-${Date.now()}`, // Это опция BullMQ для уникальности (опционально)
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    );
   }
 
   async getSingleProjectAnalytics(projectId: string) {
