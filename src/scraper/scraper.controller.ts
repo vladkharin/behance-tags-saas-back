@@ -28,6 +28,14 @@ export class ScraperController {
     return this.scraperService.queueImportCase(url, userId);
   }
 
+  @Patch('projects/:id/schedule')
+  async toggleSchedule(
+    @Param('id') id: string,
+    @Body('isScheduled') isScheduled: boolean,
+  ) {
+    return await this.scraperService.toggleSchedule(id, isScheduled);
+  }
+
   @Post(':id/analyze')
   async analyze(@Param('id') projectId: string, @Body('tags') tags?: string[]) {
     await this.scraperService.queueProjectAnalysis(projectId, tags);

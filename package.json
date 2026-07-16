@@ -36,6 +36,7 @@
     "bcrypt": "^6.0.0",
     "bullmq": "^5.79.0",
     "cheerio": "^1.2.0",
+    "date-fns": "^4.4.0",
     "https-proxy-agent": "^9.1.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",

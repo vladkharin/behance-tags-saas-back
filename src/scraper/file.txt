@@ -32,7 +32,11 @@ export class ScraperService {
     @InjectQueue('scraper-queue') private readonly scraperQueue: Queue,
   ) {}
 
-  @Cron(CronExpression.EVERY_HOUR)
+  /**
+   * СМАРТ-КРОН: Автоматический запуск анализа по расписанию тарифов
+   * Проверяет базу каждый час на наличие "созревших" проектов
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
   async handleScheduledAnalysis() {
     this.logger.log('[Cron] Проверка очереди проектов по расписанию...');
     const now = new Date();
@@ -373,11 +377,11 @@ export class ScraperService {
       where: { id: projectId },
       data: { analysisStatus: AnalysisStatus.PENDING },
     });
-    await this.scraperQueue.add('analyze-project', {
-      jobId: projectId, // <--- КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
-      removeOnComplete: true,
-      removeOnFail: true,
-    });
+    await this.scraperQueue.add(
+      'analyze-project',
+      { projectId, tags },
+      { removeOnComplete: true },
+    );
   }
 
   async getSingleProjectAnalytics(projectId: string) {

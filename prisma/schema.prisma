@@ -16,6 +16,12 @@ enum AnalysisStatus {
   PROCESSING
 }
 
+enum Plan {
+  FREE
+  DAILY_FRESH
+  PRO_STREAM
+}
+
 model User {
   id           String    @id @default(uuid())
   email        String    @unique
@@ -24,6 +30,7 @@ model User {
   projects     Project[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  plan         Plan      @default(FREE)
 }
 
 model Project {
@@ -35,6 +42,8 @@ model Project {
   appreciations        Int                  @default(0) // Лайки
   userId               String
   user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastAnalyzedAt       DateTime             @default(now())
+  isScheduled          Boolean              @default(true)
   tags                 ProjectTag[]
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
