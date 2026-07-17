@@ -104,4 +104,9 @@ export class ScraperController {
       body.state,
     );
   }
+
+  @Patch('projects/:id/tags/chart/bulk')
+  async toggleAllTags(@Param('id') id: string, @Body('state') state: boolean) {
+    return await this.scraperService.toggleAllTagsOnChart(id, state);
+  }
 }
