@@ -187,11 +187,8 @@ export class ScraperService {
       });
   }
 
-  /**
-   * ЖЕЛЕЗНЫЙ ВОРКЕР: Анализ позиций с гарантированным перезапуском (Retry)
-   */
   async analyzeProjectPositions(projectId: string, customTags?: string[]) {
-    this.logger.log(`[Analyze] >>> СТАРТ МЕТОДА для проекта: ${projectId}`);
+    this.logger.log(`[Analyze] >>> СТАРТ ДЕБАГ-АНАЛИЗА: ${projectId}`);
 
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -199,11 +196,12 @@ export class ScraperService {
     });
 
     if (!project || project.behanceId?.startsWith('pending-')) {
-      this.logger.warn(`[Analyze] Проект не готов или не найден. Отмена.`);
+      this.logger.error(
+        `[Analyze] Проект не найден или имеет временный ID: ${project?.behanceId}`,
+      );
       return;
     }
 
-    // Устанавливаем начальные статусы
     await this.prisma.project.update({
       where: { id: projectId },
       data: { analysisStatus: AnalysisStatus.PROCESSING },
@@ -213,53 +211,66 @@ export class ScraperService {
       data: { currentRank: null },
     });
 
-    const dbTags = project.tags.map((pt) => pt.tag.name);
-    const combinedTags = Array.from(new Set([...dbTags, ...(customTags || [])]))
-      .map((t) => t.replace('#', '').trim().toLowerCase())
+    const dbTags = project.tags.map((pt) => pt.tag.name) || [];
+    const validCustomTags = Array.isArray(customTags) ? customTags : [];
+    const combinedTags = Array.from(new Set([...dbTags, ...validCustomTags]))
+      .map((t) => String(t).replace('#', '').trim().toLowerCase())
       .filter((t) => t.length > 0);
+
+    this.logger.log(
+      `[Analyze] Найдено ${combinedTags.length} тегов для проверки.`,
+    );
 
     let attempt = 0;
     let success = false;
 
-    // ГЛАВНЫЙ ЦИКЛ ПЕРЕЗАПУСКА ВСЕЙ ФУНКЦИИ
     while (!success && attempt < this.MAX_RETRIES) {
       attempt++;
       let instance: any = null;
 
       try {
-        this.logger.log(
-          `[Analyze] --- ПОПЫТКА №${attempt} из ${this.MAX_RETRIES} ---`,
-        );
-
+        this.logger.log(`[Analyze] === ПОПЫТКА №${attempt} ===`);
         instance = await this.initBrowser();
-        this.logger.log(
-          `[Analyze] [Попытка ${attempt}] Браузер запущен. Переход на Behance...`,
-        );
 
+        this.logger.log(
+          `[Analyze] [${attempt}] Открываю страницу поиска для прогрева...`,
+        );
+        // Используем commit вместо networkidle2, если frame часто детачится
         await instance.page.goto('https://www.behance.net/search/projects', {
           waitUntil: 'domcontentloaded',
           timeout: 60000,
         });
 
-        // Пауза для прогрузки кук
-        await new Promise((r) => setTimeout(r, 7000));
+        this.logger.log(
+          `[Analyze] [${attempt}] Ожидание 10 секунд для генерации кук...`,
+        );
+        await new Promise((r) => setTimeout(r, 10000));
+
+        const cookies = await instance.page.cookies();
+        const bcp = cookies.find((c) => c.name === 'bcp')?.value || '';
+
+        if (!bcp) {
+          this.logger.error(
+            `[Analyze] [${attempt}] КРИТИЧЕСКАЯ ОШИБКА: Токен BCP не найден в куках!`,
+          );
+          throw new Error('BCP_TOKEN_MISSING');
+        }
+        this.logger.log(
+          `[Analyze] [${attempt}] BCP Токен получен: ${bcp.substring(0, 10)}...`,
+        );
 
         for (const tagName of combinedTags) {
-          this.logger.log(
-            `[Analyze] [Попытка ${attempt}] Проверка тега: ${tagName}`,
-          );
+          this.logger.log(`[Analyze] [${attempt}] Проверка тега: "${tagName}"`);
 
-          const cookies = await instance.page.cookies();
-          const bcp = cookies.find((c) => c.name === 'bcp')?.value || '';
-
-          const ids: string[] = await instance.page.evaluate(
+          const searchData = await instance.page.evaluate(
             async (term, bcpToken) => {
               try {
-                const query = `query ProjectsSearch($query: query, $first: Int!) { 
+                const GQL = `query ProjectsSearch($query: query, $first: Int!) { 
                 search(query: $query, type: PROJECT, first: $first) { 
                   nodes { ... on Project { id } } 
                 } 
               }`;
+
                 const r = await fetch('https://www.behance.net/v3/graphql', {
                   method: 'POST',
                   headers: {
@@ -268,26 +279,61 @@ export class ScraperService {
                     'x-bcp': bcpToken,
                     'x-requested-with': 'XMLHttpRequest',
                   },
-                  body: JSON.stringify({ query: term, first: 100 }),
+                  body: JSON.stringify({
+                    query: GQL,
+                    variables: { query: term, first: 100 },
+                  }),
                 });
-                const j = await r.json();
-                return (
-                  j.data?.search?.nodes?.map((n: any) => String(n.id)) || []
+
+                const status = r.status;
+                const json = await r.json();
+
+                if (json.errors)
+                  return {
+                    error: 'GQL_ERROR',
+                    status,
+                    msg: json.errors[0].message,
+                  };
+                if (!json.data?.search?.nodes)
+                  return { error: 'NO_DATA', status, msg: 'Nodes missing' };
+
+                const ids = json.data.search.nodes.map((n: any) =>
+                  String(n.id),
                 );
+                return { error: null, status, count: ids.length, ids };
               } catch (e) {
-                return [];
+                return { error: 'FETCH_CRASH', status: 0, msg: e.message };
               }
             },
             tagName,
             bcp,
           );
 
+          // Детальный разбор ответа
+          if (searchData.error) {
+            this.logger.error(
+              `[Analyze] [${attempt}] Ошибка на теге "${tagName}": [${searchData.status}] ${searchData.msg}`,
+            );
+            throw new Error(`RETRY_REQUIRED: ${searchData.error}`);
+          }
+
+          if (searchData.count === 0) {
+            this.logger.warn(
+              `[Analyze] [${attempt}] Тег "${tagName}" вернул 0 результатов (Статус: ${searchData.status}). Возможно, пустая выдача или блок.`,
+            );
+            throw new Error('RETRY_REQUIRED: ZERO_RESULTS');
+          }
+
           const rank =
-            ids.indexOf(project.behanceId) !== -1
-              ? ids.indexOf(project.behanceId) + 1
+            searchData.ids.indexOf(project.behanceId) !== -1
+              ? searchData.ids.indexOf(project.behanceId) + 1
               : -1;
 
-          // Обновляем текущий ранг тега
+          this.logger.log(
+            `[Analyze] [${attempt}] РЕЗУЛЬТАТ "${tagName}": Найдено ${searchData.count} кейсов. Наш ранг: ${rank > 0 ? '#' + rank : 'Вне Топ-100'}`,
+          );
+
+          // Сохраняем позиции
           const tagRec = await this.prisma.tag.upsert({
             where: { name: tagName },
             update: {},
@@ -305,65 +351,42 @@ export class ScraperService {
             });
           }
 
-          this.logger.log(
-            `[Analyze] [Попытка ${attempt}] Результат "${tagName}": ${rank > 0 ? '#' + rank : 'Вне Топ-100'}`,
-          );
-
-          // Задержка между тегами
-          await new Promise((r) => setTimeout(r, 2500 + Math.random() * 2000));
+          await new Promise((r) => setTimeout(r, 3000 + Math.random() * 2000));
         }
 
-        // ЕСЛИ ДОШЛИ СЮДА — ВСЁ ОК
         success = true;
-        await this.prisma.project.update({
-          where: { id: projectId },
-          data: { lastAnalyzedAt: new Date() },
-        });
-        this.logger.log(
-          `[Analyze] ✅ УСПЕХ: Проект ${projectId} полностью обработан.`,
-        );
+        this.logger.log(`[Analyze] ✅ ПРОЕКТ ПОЛНОСТЬЮ ОБРАБОТАН`);
       } catch (e) {
         this.logger.error(
-          `[Analyze Error] Критическая ошибка на попытке ${attempt}: ${e.message}`,
+          `[Analyze Fail] Попытка ${attempt} упала: ${e.message}`,
         );
-
         if (attempt < this.MAX_RETRIES) {
-          const waitTime = Math.min(attempt * 5000, 30000);
+          const wait = 7000;
           this.logger.warn(
-            `[Analyze] Робот перезапустится через ${waitTime / 1000} сек...`,
+            `[Analyze] Жду ${wait / 1000}с перед следующей попыткой...`,
           );
-          await new Promise((r) => setTimeout(r, waitTime));
+          await new Promise((r) => setTimeout(r, wait));
         }
       } finally {
-        // Гарантированно закрываем браузер в конце каждой попытки
         if (instance && instance.browser) {
           try {
             await instance.browser.close();
-            this.logger.log(
-              `[Analyze] Браузер закрыт после попытки ${attempt}.`,
-            );
-          } catch (err) {
-            this.logger.warn(
-              `[Analyze] Ошибка при закрытии браузера: ${err.message}`,
-            );
-          }
+          } catch (e) {}
         }
       }
     }
 
-    // КОНЕЦ МЕТОДА: Снимаем статус обработки
+    if (success) {
+      await this.prisma.project.update({
+        where: { id: projectId },
+        data: { lastAnalyzedAt: new Date() },
+      });
+    }
     await this.prisma.project.update({
       where: { id: projectId },
       data: { analysisStatus: AnalysisStatus.IDLE },
     });
-
-    if (!success) {
-      this.logger.error(
-        `[Analyze Fatal] Не удалось выполнить анализ проекта ${projectId} после ${this.MAX_RETRIES} попыток.`,
-      );
-    }
   }
-
   async getAnalytics(userId: string) {
     const projectTags = await this.prisma.projectTag.findMany({
       where: { project: { userId } },
