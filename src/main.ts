@@ -25,7 +25,7 @@ async function bootstrap() {
 
   app.enableCors({
     origin: [
-      'https://behance.domcraft.digital', // Твой боевой фронтенд
+      'https://beranked.domcraft.digital', // Твой боевой фронтенд
       'http://localhost:5173', // Локалка Vite
       'http://localhost:3000', // Локалка (на случай смены порта)
       'http://127.0.0.1:5173', // Иногда браузер использует IP вместо localhost
