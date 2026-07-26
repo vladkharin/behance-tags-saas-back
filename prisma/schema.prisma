@@ -22,6 +22,38 @@ enum Plan {
   PRO_STREAM
 }
 
+// Статусы платежей
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// Через что платили
+enum PaymentProvider {
+  ROBOKASSA
+  LAVA
+}
+
+model Payment {
+  id         String          @id @default(uuid())
+  externalId String?         @unique // ID транзакции в Робокассе или Лаве
+  amount     Float // Сумма платежа
+  currency   String          @default("RUB")
+  status     PaymentStatus   @default(PENDING)
+  provider   PaymentProvider
+
+  // Что именно покупали
+  type       String // "PLAN" или "FUEL"
+  targetName String // Название тарифа (напр. "PRO_STREAM") или пакета ("500")
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model User {
   id           String    @id @default(uuid())
   email        String    @unique
@@ -30,7 +62,13 @@ model User {
   projects     Project[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
-  plan         Plan      @default(FREE)
+
+  // ЛОГИКА ТАРИФОВ
+  plan          Plan      @default(FREE)
+  tagBalance    Int       @default(90) // Текущий баланс тегов (топливо)
+  planExpiresAt DateTime? // Дата окончания платного тарифа
+
+  payments Payment[] // История платежей пользователя
 }
 
 model Project {
