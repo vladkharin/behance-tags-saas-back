@@ -25,7 +25,7 @@ export class RobokassaService {
   generatePaymentUrl(
     userId: string,
     amount: number,
-    invId: string,
+    invId: number,
     desc: string,
   ) {
     const login = this.config.get('ROBO_MERCHANT_LOGIN');

@@ -44,7 +44,7 @@ export class BillingController {
     const url = this.robokassa.generatePaymentUrl(
       userId,
       config.price,
-      payment.id,
+      payment.orderNumber,
       config.label,
     );
 
@@ -67,7 +67,7 @@ export class BillingController {
 
     // Находим платеж в нашей базе
     const payment = await this.prisma.payment.findUnique({
-      where: { id: InvId },
+      where: { orderNumber: Number(InvId) },
       include: { user: true },
     });
 

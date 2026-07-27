@@ -36,7 +36,9 @@ enum PaymentProvider {
 }
 
 model Payment {
-  id         String          @id @default(uuid())
+  id          String @id @default(uuid())
+  orderNumber Int    @unique @default(autoincrement())
+
   externalId String?         @unique // ID транзакции в Робокассе или Лаве
   amount     Float // Сумма платежа
   currency   String          @default("RUB")
