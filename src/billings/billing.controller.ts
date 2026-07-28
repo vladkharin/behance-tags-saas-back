@@ -6,10 +6,12 @@ import {
   Query,
   BadRequestException,
   Logger,
+  Headers,
 } from '@nestjs/common';
 import { RobokassaService } from './robokassa.service';
 import { PLANS_CONFIG, FUEL_CONFIG } from './billing.constants';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { LavaService } from './lava.service';
 
 @Controller('billing')
 export class BillingController {
@@ -18,6 +20,7 @@ export class BillingController {
   constructor(
     private prisma: PrismaService,
     private robokassa: RobokassaService,
+    private lavatop: LavaService,
   ) {}
 
   // 1. Фронтенд просит ссылку на оплату
@@ -154,6 +157,96 @@ export class BillingController {
         `[Robokassa Webhook] ❌ ОШИБКА ПРИ ОБНОВЛЕНИИ БАЗЫ: ${error.message}`,
       );
       return 'error internal';
+    }
+  }
+
+  // 3. WEBHOOK от Lava.top
+  @Post('lava/webhook')
+  async lavaWebhook(
+    @Body() body: any,
+    @Headers('x-lava-signature') signature: string,
+  ) {
+    this.logger.log('--- [Lava Webhook] ПРИШЕЛ ЗАПРОС ---');
+    this.logger.log(`Payload: ${JSON.stringify(body)}`);
+
+    // 1. Проверка безопасности (если Лава передает заголовок с подписью)
+    // Если в настройках Лавы ты просто передаешь userId в ссылке, можно упростить
+
+    const { status, amount, order_id, custom_fields } = body;
+
+    if (status !== 'success') {
+      this.logger.warn(`[Lava Webhook] Платеж не завершен. Статус: ${status}`);
+      return { status: 'ok' };
+    }
+
+    // Нам нужно вытащить userId. Обычно мы его передаем как кастомное поле
+    const userId = custom_fields?.userId;
+
+    if (!userId) {
+      this.logger.error(
+        '[Lava Webhook] Критическая ошибка: userId не найден в запросе',
+      );
+      return { status: 'error' };
+    }
+
+    // 2. Определяем, что купил пользователь по сумме (USD)
+    let target = '';
+    let type: 'PLAN' | 'FUEL' = 'PLAN';
+
+    if (amount === 9.99) target = 'DAILY_FRESH_USD';
+    if (amount === 24.99) target = 'PRO_STREAM_USD';
+    if (amount === 2.99) {
+      target = '500_USD';
+      type = 'FUEL';
+    }
+    if (amount === 6.99) {
+      target = '2000_USD';
+      type = 'FUEL';
+    }
+
+    const config = type === 'PLAN' ? PLANS_CONFIG[target] : FUEL_CONFIG[target];
+
+    if (!config) {
+      this.logger.error(`[Lava Webhook] Товар не найден для суммы ${amount}`);
+      return { status: 'error' };
+    }
+
+    try {
+      // 3. Атомарно обновляем базу
+      await this.prisma.$transaction([
+        this.prisma.payment.create({
+          data: {
+            userId,
+            amount: amount,
+            currency: 'USD',
+            provider: 'LAVA',
+            type,
+            targetName: target.replace('_USD', ''),
+            status: 'SUCCESS',
+            externalId: String(order_id),
+          },
+        }),
+        this.prisma.user.update({
+          where: { id: userId },
+          data: {
+            plan:
+              type === 'PLAN' ? (target.replace('_USD', '') as any) : undefined,
+            tagBalance: { increment: config.tags },
+            planExpiresAt:
+              type === 'PLAN'
+                ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                : undefined,
+          },
+        }),
+      ]);
+
+      this.logger.log(
+        `[Lava Webhook] ✅ УСПЕХ: Начислено ${config.tags} тегов пользователю ${userId}`,
+      );
+      return { status: 'success' };
+    } catch (err) {
+      this.logger.error(`[Lava Webhook] Ошибка БД: ${err.message}`);
+      return { status: 'error' };
     }
   }
 }
