@@ -160,46 +160,75 @@ export class BillingController {
     }
   }
 
-  // 3. WEBHOOK от Lava.top
   @Post('lava/webhook')
   async lavaWebhook(
     @Body() body: any,
-    @Headers('x-lava-signature') signature: string,
+    @Headers('authorization') authHeader: string,
   ) {
     this.logger.log('--- [Lava Webhook] ПРИШЕЛ ЗАПРОС ---');
-    this.logger.log(`Payload: ${JSON.stringify(body)}`);
 
-    // 1. Проверка безопасности (если Лава передает заголовок с подписью)
-    // Если в настройках Лавы ты просто передаешь userId в ссылке, можно упростить
-
-    const { status, amount, order_id, custom_fields } = body;
-
-    if (status !== 'success') {
-      this.logger.warn(`[Lava Webhook] Платеж не завершен. Статус: ${status}`);
-      return { status: 'ok' };
+    // 1. Проверка: Дошли ли данные вообще?
+    if (!body || Object.keys(body).length === 0) {
+      this.logger.error(
+        '[Lava Webhook] ❌ ТЕЛО ЗАПРОСА ПУСТОЕ. Проверьте парсеры в main.ts',
+      );
+      return { status: 'error', message: 'Empty body' };
     }
 
-    // Нам нужно вытащить userId. Обычно мы его передаем как кастомное поле
-    const userId = custom_fields?.userId;
+    this.logger.log(`[Lava Webhook] Payload: ${JSON.stringify(body)}`);
+
+    // 2. Проверка безопасности (Basic Auth)
+    // Твой пароль: BeRanked_LavaSecure_7786!$
+    // Логин: beranked_admin
+    const expectedAuth = `Basic ${Buffer.from(
+      `${process.env.LAVA_WEBHOOK_LOGIN}:${process.env.LAVA_WEBHOOK_PASSWORD}`,
+    ).toString('base64')}`;
+
+    if (!authHeader || authHeader !== expectedAuth) {
+      this.logger.error(
+        '[Lava Webhook] ❌ ОШИБКА АВТОРИЗАЦИИ: Неверный логин/пароль',
+      );
+      // Возвращаем 401, чтобы Лава видела ошибку доступа
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // 3. Извлекаем основные данные
+    const status = body.status;
+    const amount = Number(body.amount);
+    const order_id = body.order_id || body.id;
+
+    if (status !== 'success') {
+      this.logger.warn(
+        `[Lava Webhook] Платеж проигнорирован. Статус: ${status}`,
+      );
+      return { status: 'ignored' };
+    }
+
+    // 4. Ищем userId (Лава может прислать его в разных полях)
+    const userId =
+      body.custom_fields?.userId ||
+      body.additional_data?.userId ||
+      body.userId ||
+      (body.params && body.params.userId);
 
     if (!userId) {
       this.logger.error(
-        '[Lava Webhook] Критическая ошибка: userId не найден в запросе',
+        '[Lava Webhook] ❌ ОШИБКА: userId не найден в полезной нагрузке',
       );
-      return { status: 'error' };
+      return { status: 'error', message: 'User ID missing' };
     }
 
-    // 2. Определяем, что купил пользователь по сумме (USD)
+    // 5. Определяем товар по сумме (учитываем твои цены)
     let target = '';
     let type: 'PLAN' | 'FUEL' = 'PLAN';
 
-    if (amount === 9.99) target = 'DAILY_FRESH_USD';
-    if (amount === 24.99) target = 'PRO_STREAM_USD';
-    if (amount === 2.99) {
+    // Цены из Lava.top (подставь свои, если они другие)
+    if (amount === 9.99 || amount === 8.79) target = 'DAILY_FRESH_USD';
+    else if (amount === 24.99 || amount === 21.98) target = 'PRO_STREAM_USD';
+    else if (amount === 2.99) {
       target = '500_USD';
       type = 'FUEL';
-    }
-    if (amount === 6.99) {
+    } else if (amount === 6.99) {
       target = '2000_USD';
       type = 'FUEL';
     }
@@ -207,13 +236,19 @@ export class BillingController {
     const config = type === 'PLAN' ? PLANS_CONFIG[target] : FUEL_CONFIG[target];
 
     if (!config) {
-      this.logger.error(`[Lava Webhook] Товар не найден для суммы ${amount}`);
-      return { status: 'error' };
+      this.logger.error(
+        `[Lava Webhook] ❌ ТОВАР НЕ НАЙДЕН ДЛЯ СУММЫ: ${amount}`,
+      );
+      return { status: 'error', message: 'Unknown product amount' };
     }
 
     try {
-      // 3. Атомарно обновляем базу
+      this.logger.log(
+        `[Lava Webhook] Начисляю ${config.tags} тегов пользователю ${userId}`,
+      );
+
       await this.prisma.$transaction([
+        // Логируем платеж
         this.prisma.payment.create({
           data: {
             userId,
@@ -226,6 +261,7 @@ export class BillingController {
             externalId: String(order_id),
           },
         }),
+        // Обновляем баланс и тариф
         this.prisma.user.update({
           where: { id: userId },
           data: {
@@ -240,13 +276,11 @@ export class BillingController {
         }),
       ]);
 
-      this.logger.log(
-        `[Lava Webhook] ✅ УСПЕХ: Начислено ${config.tags} тегов пользователю ${userId}`,
-      );
+      this.logger.log(`[Lava Webhook] ✅ УСПЕХ: Данные пользователя обновлены`);
       return { status: 'success' };
     } catch (err) {
-      this.logger.error(`[Lava Webhook] Ошибка БД: ${err.message}`);
-      return { status: 'error' };
+      this.logger.error(`[Lava Webhook] ❌ ОШИБКА БД: ${err.message}`);
+      return { status: 'error', message: 'Internal DB error' };
     }
   }
 }
