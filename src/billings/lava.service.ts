@@ -43,7 +43,7 @@ export class LavaService {
       );
 
       // Пробуем достать ссылку из разных мест (зависит от версии API)
-      const paymentUrl = response.data.url || response.data.data?.url;
+      const paymentUrl = response.data.paymentUrl;
 
       if (!paymentUrl) {
         this.logger.error(
