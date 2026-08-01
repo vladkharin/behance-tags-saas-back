@@ -91,7 +91,7 @@ export class BillingController {
           : target === 'PRO_STREAM'
             ? 24.99
             : target === '500'
-              ? 2.99
+              ? 0.63
               : 6.99;
 
       try {
