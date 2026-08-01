@@ -1,30 +1,47 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as crypto from 'crypto';
+import axios from 'axios';
 
 @Injectable()
 export class LavaService {
   private readonly logger = new Logger(LavaService.name);
+  private readonly apiUrl = 'https://gate.lava.top/api/v3/invoice';
 
   constructor(private config: ConfigService) {}
 
-  // Проверка подписи запроса от Lava
-  verifySignature(body: any, signature: string): boolean {
-    const secret = this.config.get('LAVA_SECRET_KEY');
+  async createInvoice(
+    email: string,
+    offerId: string,
+    amount: number,
+    currency: string,
+  ) {
+    const apiKey = this.config.get('LAVA_API_KEY');
 
-    // В Lava подпись обычно строится на основе JSON-тела запроса и секретного ключа
-    // Сортируем ключи, чтобы порядок всегда был одинаковым
-    const sortedData = Object.keys(body)
-      .sort()
-      .filter((key) => key !== 'signature') // Исключаем саму подпись из расчета
-      .map((key) => `${key}:${body[key]}`)
-      .join('|');
+    try {
+      const response = await axios.post(
+        this.apiUrl,
+        {
+          email: email, // Email плательщика (обязательно для v3)
+          offerId: offerId, // ID конкретного товара
+          currency: currency, // EUR или USD
+          amount: amount,
+        },
+        {
+          headers: {
+            Accept: 'application/json',
+            'X-Api-Key': apiKey,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
 
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(sortedData)
-      .digest('hex');
-
-    return expectedSignature === signature;
+      // В ответе API v3 ссылка на оплату обычно лежит в response.data.url
+      return response.data.url;
+    } catch (error) {
+      this.logger.error(
+        `[Lava API v3] Ошибка: ${error.response?.data?.message || error.message}`,
+      );
+      throw error;
+    }
   }
 }
