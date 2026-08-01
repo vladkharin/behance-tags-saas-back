@@ -15,7 +15,7 @@ export class LavaService {
     amount: number,
     currency: string,
   ) {
-    const apiKey = this.config.get('LAVA_API_KEY');
+    const apiKey = this.config.get('LAVA_SECRET_KEY');
 
     try {
       const response = await axios.post(
