@@ -80,6 +80,7 @@ model Project {
   url                  String
   views                Int                  @default(0)
   appreciations        Int                  @default(0) // Лайки
+  comments             Int                  @default(0)
   userId               String
   user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   lastAnalyzedAt       DateTime             @default(now())

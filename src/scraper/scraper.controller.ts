@@ -9,6 +9,7 @@ import {
   Query,
   Logger,
   Patch,
+  NotFoundException,
 } from '@nestjs/common';
 import { ScraperService } from './scraper.service';
 
@@ -108,5 +109,14 @@ export class ScraperController {
   @Patch('projects/:id/tags/chart/bulk')
   async toggleAllTags(@Param('id') id: string, @Body('state') state: boolean) {
     return await this.scraperService.toggleAllTagsOnChart(id, state);
+  }
+
+  @Get('demo')
+  async getDemo() {
+    const project = await this.scraperService.getDemoProject();
+    if (!project) {
+      throw new NotFoundException('No demo projects available');
+    }
+    return project;
   }
 }
