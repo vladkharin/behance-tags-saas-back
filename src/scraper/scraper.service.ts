@@ -443,4 +443,37 @@ export class ScraperService {
       select: { id: true },
     });
   }
+
+  async getAnalytics(userId: string) {
+    const projectTags = await this.prisma.projectTag.findMany({
+      where: { project: { userId } },
+      include: { project: true, tag: true },
+    });
+    const tagsMap: Record<string, any> = {};
+    for (const pt of projectTags) {
+      const name = pt.tag.name;
+      if (!tagsMap[name])
+        tagsMap[name] = {
+          tag: name,
+          totalViews: 0,
+          totalAppreciations: 0,
+          totalComments: 0, // Добавили комменты
+          count: 0,
+          currentRank: pt.currentRank,
+        };
+      tagsMap[name].totalViews += pt.project.views;
+      tagsMap[name].totalAppreciations += pt.project.appreciations;
+      tagsMap[name].totalComments += pt.project.comments; // Добавили комменты
+      tagsMap[name].count += 1;
+    }
+    const activeProject = await this.prisma.project.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return {
+      user: { id: userId },
+      activeProject,
+      tagsMatrix: Object.values(tagsMap),
+    };
+  }
 }
