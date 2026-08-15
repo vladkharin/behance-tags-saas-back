@@ -6,12 +6,17 @@ import {
   Logger,
   Headers,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { RobokassaService } from './robokassa.service';
 import { PLANS_CONFIG, FUEL_CONFIG } from './billing.constants';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { LavaService } from './lava.service';
 import { ConfigService } from '@nestjs/config';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/user.decorator';
+import { CreatePaymentDto } from './dto/billing.dto';
+import * as crypto from 'crypto';
 
 @Controller('billing')
 export class BillingController {
@@ -21,39 +26,39 @@ export class BillingController {
     private prisma: PrismaService,
     private robokassa: RobokassaService,
     private lavatop: LavaService,
-    private configService: ConfigService, // Добавили для доступа к Offer ID
+    private configService: ConfigService,
   ) {}
 
-  // 1. Создание платежа (Универсальный метод для Робокассы и Лавы)
+  // 1. Создание платежа (Защищено JWT: пользователь платит только за себя)
+  @UseGuards(JwtAuthGuard)
   @Post('create-payment')
   async createPayment(
-    @Body()
-    body: {
-      userId: string;
-      target: string;
-      type: 'PLAN' | 'FUEL';
-      currency: 'RUB' | 'USD' | 'EUR';
-    },
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreatePaymentDto,
   ) {
-    const { userId, target, type, currency } = body;
+    const { target, type, currency } = dto;
     this.logger.log(
-      `[Create Payment] Запрос: User ${userId}, Target: ${target}, Currency: ${currency}`,
+      `[Create Payment] Запрос: User ${userId}, Target: ${target}, Type: ${type}, Currency: ${currency}`,
     );
 
-    // Находим пользователя, так как для Лавы нам нужен его Email
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new BadRequestException('User not found');
+    if (!user) {
+      throw new BadRequestException('Пользователь не найден');
+    }
 
-    // Определяем конфиг (цены/теги)
-    const config = type === 'PLAN' ? PLANS_CONFIG[target] : FUEL_CONFIG[target];
-    if (!config) throw new BadRequestException('Invalid target');
+    const config =
+      type === 'PLAN' ? PLANS_CONFIG[target] : FUEL_CONFIG[target];
+    if (!config) {
+      throw new BadRequestException('Неверный тариф или пакет');
+    }
 
     // --- ЛОГИКА ДЛЯ РУБЛЕЙ (ROBOKASSA) ---
     if (currency === 'RUB') {
       const payment = await this.prisma.payment.create({
         data: {
           userId,
-          amount: config.price,
+          amount: config.priceRub,
+          currency: 'RUB',
           provider: 'ROBOKASSA',
           type,
           targetName: target,
@@ -63,7 +68,7 @@ export class BillingController {
 
       const url = this.robokassa.generatePaymentUrl(
         userId,
-        config.price,
+        config.priceRub,
         payment.orderNumber,
         config.label,
       );
@@ -73,29 +78,17 @@ export class BillingController {
 
     // --- ЛОГИКА ДЛЯ USD/EUR (LAVA API v3) ---
     else {
-      // Вытаскиваем нужный Offer ID из .env (например: LAVA_OFFER_ID_PRO_STREAM)
-      const envKey = `LAVA_OFFER_ID_${target}`;
-      const offerId = this.configService.get<string>(envKey);
-
+      const offerId = this.configService.get<string>(config.envOfferKey);
       if (!offerId) {
         this.logger.error(
-          `[Lava API] Offer ID не найден в .env для ключа: ${envKey}`,
+          `[Lava API] Offer ID не найден в .env для ключа: ${config.envOfferKey}`,
         );
-        throw new BadRequestException('Payment provider configuration error');
+        throw new BadRequestException('Ошибка конфигурации платежного шлюза');
       }
 
-      // Определяем цену для Лавы (если в конфиге нет отдельной цены под USD, берем базовую)
-      const amount =
-        target === 'DAILY_FRESH'
-          ? 9.99
-          : target === 'PRO_STREAM'
-            ? 24.99
-            : target === '500'
-              ? 0.63
-              : 6.99;
+      const amount = config.priceUsd;
 
       try {
-        // Создаем инвойс через API v3
         const url = await this.lavatop.createInvoice(
           user.email,
           offerId,
@@ -107,7 +100,7 @@ export class BillingController {
         return { url };
       } catch (err) {
         this.logger.error(`[Lava API] Ошибка создания счета: ${err.message}`);
-        throw new BadRequestException('Lava.top API error');
+        throw new BadRequestException('Ошибка создания счета в Lava.top');
       }
     }
   }
@@ -133,12 +126,28 @@ export class BillingController {
       include: { user: true },
     });
 
-    if (!payment || payment.status === 'SUCCESS') return `OK${InvId}`;
+    if (!payment) {
+      this.logger.error(`[Robokassa Webhook] Платеж #${InvId} не найден`);
+      return `OK${InvId}`;
+    }
+
+    // Идемпотентность: если уже успешно оплачен, не начисляем повторно
+    if (payment.status === 'SUCCESS') {
+      this.logger.log(`[Robokassa Webhook] Платеж #${InvId} уже обработан`);
+      return `OK${InvId}`;
+    }
 
     const config =
       payment.type === 'PLAN'
         ? PLANS_CONFIG[payment.targetName]
         : FUEL_CONFIG[payment.targetName];
+
+    if (!config) {
+      this.logger.error(
+        `[Robokassa Webhook] Неизвестный продукт ${payment.targetName}`,
+      );
+      return `OK${InvId}`;
+    }
 
     try {
       await this.prisma.$transaction([
@@ -161,8 +170,10 @@ export class BillingController {
           },
         }),
       ]);
+      this.logger.log(`[Robokassa Webhook] ✅ Успешно начислено для #${InvId}`);
       return `OK${InvId}`;
     } catch (error) {
+      this.logger.error(`[Robokassa Webhook] Ошибка транзакции: ${error.message}`);
       return 'error internal';
     }
   }
@@ -176,72 +187,110 @@ export class BillingController {
     this.logger.log('--- [Lava Webhook] ПРИШЕЛ ЗАПРОС ---');
     this.logger.log(`Payload: ${JSON.stringify(body)}`);
 
-    // Проверка Basic Auth
-    const expectedAuth = `Basic ${Buffer.from(`${process.env.LAVA_WEBHOOK_LOGIN}:${process.env.LAVA_WEBHOOK_PASSWORD}`).toString('base64')}`;
-    if (!authHeader || authHeader !== expectedAuth) {
-      this.logger.error('[Lava Webhook] ❌ ОШИБКА АВТОРИЗАЦИИ');
+    // Безопасная проверка Basic Auth
+    const expectedLogin = this.configService.get<string>('LAVA_WEBHOOK_LOGIN') || '';
+    const expectedPassword =
+      this.configService.get<string>('LAVA_WEBHOOK_PASSWORD') || '';
+    const expectedAuth = `Basic ${Buffer.from(
+      `${expectedLogin}:${expectedPassword}`,
+    ).toString('base64')}`;
+
+    const authBuf = Buffer.from(authHeader || '');
+    const expBuf = Buffer.from(expectedAuth);
+
+    const isAuthValid =
+      authBuf.length === expBuf.length &&
+      crypto.timingSafeEqual(authBuf, expBuf);
+
+    if (!isAuthValid) {
+      this.logger.error('[Lava Webhook] ❌ ОШИБКА АВТОРИЗАЦИИ ВЕБХУКА');
       throw new UnauthorizedException();
     }
 
-    const { status, amount, offerId, email } = body;
+    const { status, amount, offerId, email, id: transactionId } = body;
     if (status !== 'success') return { status: 'ignored' };
 
-    // Находим пользователя по email (так как Лава v3 присылает email плательщика)
+    const externalIdStr = String(transactionId || '');
+
+    // Идемпотентность: проверяем, не был ли этот платеж уже зачислен
+    if (externalIdStr) {
+      const existingPayment = await this.prisma.payment.findUnique({
+        where: { externalId: externalIdStr },
+      });
+      if (existingPayment && existingPayment.status === 'SUCCESS') {
+        this.logger.log(
+          `[Lava Webhook] Платеж ${externalIdStr} уже был успешно обработан ранее`,
+        );
+        return { status: 'success' };
+      }
+    }
+
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
       this.logger.error(
         `[Lava Webhook] Пользователь с email ${email} не найден`,
       );
-      return { status: 'error' };
+      return { status: 'error', message: 'User not found' };
     }
 
-    // Определяем, что начислить (ищем, какому тарифу соответствует этот offerId)
+    // Определяем продукт по offerId
     let target = '';
     let type: 'PLAN' | 'FUEL' = 'PLAN';
 
-    if (offerId === process.env.LAVA_OFFER_ID_DAILY_FRESH)
+    const dailyOffer = this.configService.get('LAVA_OFFER_ID_DAILY_FRESH');
+    const proOffer = this.configService.get('LAVA_OFFER_ID_PRO_STREAM');
+    const fuel500Offer = this.configService.get('LAVA_OFFER_ID_500');
+    const fuel2000Offer = this.configService.get('LAVA_OFFER_ID_2000');
+
+    if (offerId === dailyOffer) {
       target = 'DAILY_FRESH';
-    else if (offerId === process.env.LAVA_OFFER_ID_PRO_STREAM)
+      type = 'PLAN';
+    } else if (offerId === proOffer) {
       target = 'PRO_STREAM';
-    else if (offerId === process.env.LAVA_OFFER_ID_500) {
+      type = 'PLAN';
+    } else if (offerId === fuel500Offer) {
       target = '500';
       type = 'FUEL';
-    } else if (offerId === process.env.LAVA_OFFER_ID_2000) {
+    } else if (offerId === fuel2000Offer) {
       target = '2000';
       type = 'FUEL';
     }
 
     const config = type === 'PLAN' ? PLANS_CONFIG[target] : FUEL_CONFIG[target];
-    if (!config) return { status: 'error', message: 'Unknown product' };
+    if (!config) {
+      this.logger.error(`[Lava Webhook] Неизвестный offerId: ${offerId}`);
+      return { status: 'error', message: 'Unknown product' };
+    }
 
     try {
       await this.prisma.$transaction([
         this.prisma.payment.create({
           data: {
             userId: user.id,
-            amount: Number(amount),
+            amount: Number(amount) || config.priceUsd,
             currency: 'USD',
             provider: 'LAVA',
             type,
             targetName: target,
             status: 'SUCCESS',
-            externalId: String(body.id),
+            externalId: externalIdStr || undefined,
           },
         }),
         this.prisma.user.update({
           where: { id: user.id },
           data: {
-            plan: type === 'PLAN' ? (target as any) : undefined,
+            plan: type === 'PLAN' ? (target as any) : user.plan,
             tagBalance: { increment: config.tags },
             planExpiresAt:
               type === 'PLAN'
                 ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-                : undefined,
+                : user.planExpiresAt,
           },
         }),
       ]);
+
       this.logger.log(
-        `[Lava Webhook] ✅ УСПЕХ: Начислено ${config.tags} тегов юзеру ${user.email}`,
+        `[Lava Webhook] ✅ УСПЕХ: Начислено ${config.tags} тегов пользователю ${user.email}`,
       );
       return { status: 'success' };
     } catch (err) {

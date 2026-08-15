@@ -27,7 +27,7 @@ export class RobokassaService {
   generatePaymentUrl(
     userId: string,
     amount: number,
-    invId: number, // Тип изменен на number
+    invId: number,
     desc: string,
   ) {
     const login = this.config.get('ROBO_MERCHANT_LOGIN');
@@ -40,13 +40,9 @@ export class RobokassaService {
       .update(signatureSource)
       .digest('hex');
 
-    this.logger.log(`[Robokassa] Генерирую ссылку для User: ${userId}`);
-    this.logger.log(
-      `[Robokassa] Режим: ${this.isTest ? 'ТЕСТОВЫЙ' : 'БОЕВОЙ'}`,
-    );
-    this.logger.log(`[Robokassa] Исходная строка подписи: ${signatureSource}`);
+    this.logger.log(`[Robokassa] Генерирую ссылку для User: ${userId}, InvId: ${invId}`);
 
-    let url = `https://auth.robokassa.ru/Merchant/Index.aspx?MerchantLogin=${login}&OutSum=${amount}&InvId=${invId}&Description=${desc}&SignatureValue=${signature}&shp_userId=${userId}`;
+    let url = `https://auth.robokassa.ru/Merchant/Index.aspx?MerchantLogin=${login}&OutSum=${amount}&InvId=${invId}&Description=${encodeURIComponent(desc)}&SignatureValue=${signature}&shp_userId=${userId}`;
 
     if (this.isTest) url += '&isTest=1';
 
@@ -59,30 +55,30 @@ export class RobokassaService {
     invId: string,
     receivedSig: string,
     userId: string,
-  ) {
+  ): boolean {
     const { p2 } = this.passwords;
+    if (!receivedSig || !p2) {
+      this.logger.error('[Robokassa Webhook] Отсутствует подпись или пароль #2');
+      return false;
+    }
 
     // Формула ответа (Result URL): OutSum:InvId:Pass2:shp_userId=...
     const signatureSource = `${amount}:${invId}:${p2}:shp_userId=${userId}`;
     const expectedSignature = crypto
       .createHash('md5')
       .update(signatureSource)
-      .digest('hex');
+      .digest('hex')
+      .toLowerCase();
 
-    this.logger.log(`[Robokassa Webhook] Проверка подписи...`);
-    this.logger.log(
-      `[Robokassa Webhook] Данные: Sum=${amount}, InvId=${invId}, User=${userId}`,
-    );
-    this.logger.log(
-      `[Robokassa Webhook] Исходная строка для MD5: ${signatureSource}`,
-    );
-    this.logger.log(`[Robokassa Webhook] Ожидаем MD5: ${expectedSignature}`);
-    this.logger.log(
-      `[Robokassa Webhook] Получили MD5: ${receivedSig?.toLowerCase()}`,
-    );
+    const expectedBuf = Buffer.from(expectedSignature);
+    const receivedBuf = Buffer.from(receivedSig.toLowerCase());
 
-    const isValid =
-      expectedSignature.toLowerCase() === receivedSig?.toLowerCase();
+    if (expectedBuf.length !== receivedBuf.length) {
+      this.logger.error('[Robokassa Webhook] ❌ Неверная длина подписи');
+      return false;
+    }
+
+    const isValid = crypto.timingSafeEqual(expectedBuf, receivedBuf);
 
     if (isValid) {
       this.logger.log(`[Robokassa Webhook] ✅ Подпись верна!`);
