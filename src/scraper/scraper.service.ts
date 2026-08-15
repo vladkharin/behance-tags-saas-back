@@ -205,12 +205,22 @@ export class ScraperService {
       try {
         instance = await this.initBrowser();
         await instance.page.goto('https://www.behance.net/search/projects', {
-          waitUntil: 'networkidle2',
+          waitUntil: 'domcontentloaded',
           timeout: 30000,
         });
-        await new Promise((r) => setTimeout(r, 4000));
+        await new Promise((r) => setTimeout(r, 2500));
         const cookies = await instance.page.cookies();
-        const bcp = cookies.find((c: any) => c.name === 'bcp')?.value || '';
+        let bcp = cookies.find((c: any) => c.name === 'bcp')?.value || '';
+        if (!bcp) {
+          bcp = await instance.page.evaluate(() => {
+            const match = document.cookie.match(/bcp=([^;]+)/);
+            return match ? match[1] : '';
+          });
+        }
+        if (!bcp) {
+          throw new Error('Не удалось извлечь bcp токен из сессии Behance');
+        }
+        this.logger.log(`[Import] ✅ bcp токен получен: ${bcp.substring(0, 10)}...`);
         const behanceIdFromUrl = url.match(/gallery\/([0-9]+)/)?.[1];
         if (!behanceIdFromUrl) throw new Error('ID кейса не найден в URL');
 
@@ -334,7 +344,17 @@ export class ScraperService {
           await new Promise((r) => setTimeout(r, 3000));
 
           const cookies = await instance.page.cookies();
-          const bcp = cookies.find((c: any) => c.name === 'bcp')?.value || '';
+          let bcp = cookies.find((c: any) => c.name === 'bcp')?.value || '';
+          if (!bcp) {
+            bcp = await instance.page.evaluate(() => {
+              const match = document.cookie.match(/bcp=([^;]+)/);
+              return match ? match[1] : '';
+            });
+          }
+          if (!bcp) {
+            throw new Error('Не удалось извлечь bcp токен из сессии Behance');
+          }
+          this.logger.log(`[Analyze] ✅ bcp токен получен: ${bcp.substring(0, 10)}...`);
 
           const latestData = await this.fetchProjectStats(
             instance.page,
@@ -363,6 +383,7 @@ export class ScraperService {
                     'Content-Type': 'application/json',
                     'x-adobe-app': 'behance',
                     'x-bcp': bcpToken,
+                    'x-requested-with': 'XMLHttpRequest',
                   },
                   body: JSON.stringify({
                     query: GQL,
