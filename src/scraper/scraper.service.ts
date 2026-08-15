@@ -591,12 +591,47 @@ export class ScraperService {
       };
     });
 
+    // Умные рекомендации кастомных тегов, не входящих в основные 10
+    const existingTagNames = new Set(project.tags.map((t) => t.tag.name.toLowerCase()));
+    const allNichePresets: Record<string, string[]> = {
+      branding: ['brand identity', 'logo design', 'typography', 'packaging', 'visual identity', 'corporate identity', 'editorial design'],
+      ui: ['ui/ux', 'mobile app', 'figma', 'dashboard', 'landing page', 'web design', 'user experience', 'design system'],
+      '3d': ['3d render', 'blender', 'cinema 4d', 'octane render', 'cgi', 'motion design', '3d modeling'],
+      photo: ['photography', 'art direction', 'photoshop', 'retouching', 'concept art'],
+      illustration: ['vector art', 'digital illustration', 'character design', 'poster design'],
+    };
+
+    const suggestedTagsSet = new Set<string>();
+    // Определяем сферу проекта по уже существующим тегам и заголовку
+    const projectContext = `${project.title} ${Array.from(existingTagNames).join(' ')}`.toLowerCase();
+
+    for (const [niche, keywords] of Object.entries(allNichePresets)) {
+      if (projectContext.includes(niche) || keywords.some((k) => projectContext.includes(k))) {
+        for (const kw of keywords) {
+          if (!existingTagNames.has(kw)) {
+            suggestedTagsSet.add(kw);
+          }
+        }
+      }
+    }
+
+    // Если ничего специфического не подобрано, добавляем универсальные популярные теги Behance
+    if (suggestedTagsSet.size < 3) {
+      const fallback = ['art direction', 'creative design', 'digital art', 'graphic design', 'behance portfolio'];
+      for (const f of fallback) {
+        if (!existingTagNames.has(f)) suggestedTagsSet.add(f);
+      }
+    }
+
+    const suggestedTags = Array.from(suggestedTagsSet).slice(0, 6);
+
     return {
       activeProject: project,
       plan: project.user.plan,
       tagBalance: project.user.tagBalance,
       lastAnalyzedAt: project.lastAnalyzedAt,
       tagsMatrix,
+      suggestedTags,
       status: project.analysisStatus,
     };
   }
@@ -612,15 +647,60 @@ export class ScraperService {
   async deleteProject(projectId: string, userId: string) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, userId },
+      include: { user: true },
     });
 
     if (!project) {
       throw new NotFoundException('Проект не найден или нет прав на удаление');
     }
 
+    // Проверка правила удаления для бесплатного тарифа (раз в 7 дней)
+    if (project.user.plan === 'FREE') {
+      const now = new Date();
+      const createdAt = new Date(project.createdAt);
+      const diffMs = now.getTime() - createdAt.getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+      if (diffDays < 7) {
+        const remainingDays = Math.ceil(7 - diffDays);
+        throw new BadRequestException(
+          `На бесплатном тарифе удаление кейса доступно раз в 7 дней. До следующего удаления осталось ${remainingDays} дн. Перейдите на тариф Daily Fresh или Pro Stream для мгновенного удаления.`,
+        );
+      }
+    }
+
     return await this.prisma.project.delete({
       where: { id: projectId },
     });
+  }
+
+  async removeTagFromProject(projectId: string, userId: string, tagName: string) {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, userId },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Проект не найден');
+    }
+
+    const tag = await this.prisma.tag.findUnique({
+      where: { name: tagName },
+    });
+
+    if (!tag) {
+      throw new NotFoundException('Тег не найден');
+    }
+
+    // Удаляем ТОЛЬКО связь с данным проектом (ProjectTag).
+    // Сам Tag и история TagPositionHistory остаются в БД для сохранения глобальной статистики!
+    await this.prisma.projectTag.deleteMany({
+      where: {
+        projectId,
+        tagId: tag.id,
+      },
+    });
+
+    return { success: true, message: `Тег #${tagName} удален из активного мониторинга проекта` };
   }
 
   async getProjectAnalyticsHistory(projectId: string, userId: string) {

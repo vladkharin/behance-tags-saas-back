@@ -142,6 +142,23 @@ export class ScraperController {
   }
 
   /**
+   * 10.1 Удаление тега из мониторинга проекта (мягкое отключение без удаления из БД)
+   */
+  @UseGuards(JwtAuthGuard)
+  @Delete('projects/:id/tags/:tagName')
+  async removeTagFromProject(
+    @Param('id') projectId: string,
+    @Param('tagName') tagName: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return await this.scraperService.removeTagFromProject(
+      projectId,
+      userId,
+      tagName,
+    );
+  }
+
+  /**
    * 11. Получение детальной информации по проекту (матрица, статус, баланс)
    */
   @UseGuards(JwtAuthGuard)
