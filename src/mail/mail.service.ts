@@ -134,6 +134,36 @@ export class MailService {
     // Логируем в консоль для разработки
     this.logger.log(`\n======================================================\n📧 [EMAIL VERIFICATION CODE]\n👤 To: ${to}\n🔢 CODE: ${code}\n⏳ Valid for 15 minutes\n======================================================\n`);
 
+    const resendApiKey = this.configService.get<string>('RESEND_API_KEY');
+    if (resendApiKey) {
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: from.includes('<') ? from : `BeRanked <${from}>`,
+            to: [to],
+            subject: `Код подтверждения: ${code} — BeRanked`,
+            html,
+            text,
+          }),
+        });
+
+        if (res.ok) {
+          this.logger.log(`[MailService] Письмо с кодом ${code} успешно отправлено через Resend HTTPS API на ${to}`);
+          return true;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          this.logger.error(`[MailService] Ошибка ответа Resend API:`, errData);
+        }
+      } catch (err) {
+        this.logger.error(`[MailService] Ошибка сетевого запроса Resend API:`, err);
+      }
+    }
+
     if (!this.isConfigured || !this.transporter) {
       return true; // В dev-режиме код залогирован, флоу продолжается успешно
     }
