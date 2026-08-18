@@ -136,6 +136,7 @@ export class MailService {
 
     const resendApiKey = this.configService.get<string>('RESEND_API_KEY');
     if (resendApiKey) {
+      const resendFrom = this.configService.get<string>('RESEND_FROM') || 'BeRanked <onboarding@resend.dev>';
       try {
         const res = await fetch('https://api.resend.com/emails', {
           method: 'POST',
@@ -144,7 +145,7 @@ export class MailService {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            from: from.includes('<') ? from : `BeRanked <${from}>`,
+            from: resendFrom,
             to: [to],
             subject: `Код подтверждения: ${code} — BeRanked`,
             html,
