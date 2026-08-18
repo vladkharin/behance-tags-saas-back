@@ -7,7 +7,7 @@ import {
   Request,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto } from './dto/auth.dto';
+import { RegisterDto, LoginDto, VerifyCodeDto, ResendCodeDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Throttle } from '@nestjs/throttler';
 
@@ -19,6 +19,18 @@ export class AuthController {
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Post('verify-code')
+  verifyCode(@Body() dto: VerifyCodeDto) {
+    return this.authService.verifyEmailCode(dto);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Post('resend-code')
+  resendCode(@Body() dto: ResendCodeDto) {
+    return this.authService.resendVerificationCode(dto);
   }
 
   @Throttle({ default: { limit: 10, ttl: 60000 } })
@@ -35,3 +47,4 @@ export class AuthController {
     return await this.authService.getProfile(userId);
   }
 }
+

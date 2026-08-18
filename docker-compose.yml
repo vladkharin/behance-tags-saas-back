@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: "2001"
       POSTGRES_DB: behance_tags_db
     ports:
-      - "5432:5432"
+      - "0.0.0.0:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -23,9 +23,7 @@ services:
     # Устанавливаем пароль при запуске
     command: ["redis-server", "--requirepass", "vladMatrixScraper777SafePassword"]
     ports:
-      # Теперь порт 6379 не торчит в интернет. 
-      # Он доступен только твоему бэкенду внутри Docker и тебе лично на этом компьютере.
-      - "127.0.0.1:6379:6379"
+      - "0.0.0.0:6379:6379"
 
   # Наш NestJS бэкенд
   api:

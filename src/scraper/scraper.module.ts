@@ -18,8 +18,8 @@ import { BasicAuthMiddleware } from '../common/middleware/basic-auth.middleware'
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
         connection: {
-          host: config.get('REDIS_HOST') || 'localhost',
-          port: config.get<number>('REDIS_PORT') || 6379,
+          host: config.get<string>('REDIS_HOST') || '127.0.0.1',
+          port: Number(config.get('REDIS_PORT')) || 6379,
           password: config.get<string>('REDIS_PASSWORD') || undefined,
         },
       }),

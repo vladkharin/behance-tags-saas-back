@@ -29,3 +29,20 @@ export class LoginDto {
   @IsNotEmpty({ message: 'Пароль обязателен' })
   password!: string;
 }
+
+export class VerifyCodeDto {
+  @IsEmail({}, { message: 'Некорректный формат email' })
+  @IsNotEmpty({ message: 'Email обязателен' })
+  email!: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Код подтверждения обязателен' })
+  @MinLength(4, { message: 'Код должен содержать минимум 4 символа' })
+  code!: string;
+}
+
+export class ResendCodeDto {
+  @IsEmail({}, { message: 'Некорректный формат email' })
+  @IsNotEmpty({ message: 'Email обязателен' })
+  email!: string;
+}

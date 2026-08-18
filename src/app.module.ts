@@ -10,6 +10,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { HealthModule } from './health/health.module';
+import { MailModule } from './mail/mail.module';
 import { AdminModule } from './admin/admin.module';
 
 @Module({
@@ -22,6 +23,7 @@ import { AdminModule } from './admin/admin.module';
       },
     ]),
     ScheduleModule.forRoot(),
+    MailModule,
     ScraperModule,
     PrismaModule,
     AuthModule,

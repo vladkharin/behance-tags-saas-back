@@ -72,6 +72,11 @@ model User {
   tagBalance    Int       @default(90) // Текущий баланс тегов (топливо)
   planExpiresAt DateTime? // Дата окончания платного тарифа
 
+  // ВЕРИФИКАЦИЯ EMAIL
+  isEmailVerified         Boolean   @default(false)
+  verificationCode        String?
+  verificationCodeExpires DateTime?
+
   payments Payment[] // История платежей пользователя
 }
 
