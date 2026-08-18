@@ -64,7 +64,7 @@ export class MailService {
                 BeRanked
               </div>
               <h1 style="margin: 20px 0 6px 0; font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">Подтверждение почты</h1>
-              <p style="margin: 0; font-size: 13px; color: #a1a1aa;">Аналитика и вывод кейсов Behance в ТОП-10</p>
+              <p style="margin: 0; font-size: 13px; color: #a1a1aa;">Аналитика и мониторинг позиций тегов Behance</p>
             </td>
           </tr>
 
