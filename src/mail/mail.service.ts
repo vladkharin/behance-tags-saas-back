@@ -17,20 +17,39 @@ export class MailService {
 
     if (host && user && pass) {
       try {
-        this.transporter = nodemailer.createTransport({
-          host,
-          port: Number(port) || 465,
-          secure,
-          auth: {
-            user,
-            pass,
-          },
-          tls: {
-            rejectUnauthorized: false,
-          },
-        });
+        const isGmail = host === 'smtp.gmail.com' || (user && user.includes('@gmail.com'));
+
+        if (isGmail) {
+          this.transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+              user,
+              pass,
+            },
+            connectionTimeout: 15000,
+            greetingTimeout: 15000,
+            socketTimeout: 15000,
+          });
+          this.logger.log(`[MailService] Gmail SMTP транспорт инициализирован (service: gmail) для ${user}`);
+        } else {
+          this.transporter = nodemailer.createTransport({
+            host,
+            port: Number(port) || 465,
+            secure,
+            auth: {
+              user,
+              pass,
+            },
+            tls: {
+              rejectUnauthorized: false,
+            },
+            connectionTimeout: 15000,
+            greetingTimeout: 15000,
+            socketTimeout: 15000,
+          });
+          this.logger.log(`[MailService] SMTP транспорт инициализирован: ${host}:${port} (${user})`);
+        }
         this.isConfigured = true;
-        this.logger.log(`[MailService] SMTP транспорт инициализирован: ${host}:${port} (${user})`);
       } catch (err) {
         this.logger.error('[MailService] Ошибка настройки SMTP транспорта:', err);
       }
