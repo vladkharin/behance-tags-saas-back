@@ -135,6 +135,8 @@ export class MailService {
     this.logger.log(`\n======================================================\n📧 [EMAIL VERIFICATION CODE]\n👤 To: ${to}\n🔢 CODE: ${code}\n⏳ Valid for 15 minutes\n======================================================\n`);
 
     const resendApiKey = this.configService.get<string>('RESEND_API_KEY');
+    let resendSent = false;
+
     if (resendApiKey) {
       const resendFrom = this.configService.get<string>('RESEND_FROM') || 'BeRanked <onboarding@resend.dev>';
       try {
@@ -155,7 +157,7 @@ export class MailService {
 
         if (res.ok) {
           this.logger.log(`[MailService] Письмо с кодом ${code} успешно отправлено через Resend HTTPS API на ${to}`);
-          return true;
+          resendSent = true;
         } else {
           const errData = await res.json().catch(() => ({}));
           this.logger.error(`[MailService] Ошибка ответа Resend API:`, errData);
@@ -165,24 +167,34 @@ export class MailService {
       }
     }
 
-    if (!this.isConfigured || !this.transporter) {
-      return true; // В dev-режиме код залогирован, флоу продолжается успешно
+    if (resendSent) {
+      return true;
     }
 
-    try {
-      await this.transporter.sendMail({
-        from,
-        to,
-        subject: `Код подтверждения: ${code} — BeRanked`,
-        text,
-        html,
-      });
-      this.logger.log(`[MailService] Письмо с кодом ${code} успешно отправлено на ${to}`);
-      return true;
-    } catch (error) {
-      this.logger.error(`[MailService] Ошибка отправки письма на ${to}:`, error);
-      // Не роняем бэкенд, логируем ошибку
+    if (this.isConfigured && this.transporter) {
+      try {
+        await this.transporter.sendMail({
+          from,
+          to,
+          subject: `Код подтверждения: ${code} — BeRanked`,
+          text,
+          html,
+        });
+        this.logger.log(`[MailService] Письмо с кодом ${code} успешно отправлено на ${to} через SMTP`);
+        return true;
+      } catch (error) {
+        this.logger.error(`[MailService] Ошибка отправки письма через SMTP на ${to}:`, error);
+        return false;
+      }
+    }
+
+    const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+    if (isProduction) {
+      this.logger.error(`[MailService] Не удалось отправить письмо на ${to}: все почтовые сервисы дали сбой или не настроены`);
       return false;
     }
+
+    this.logger.warn(`[MailService] Почта не была отправлена (режим разработки), флоу продолжается успешно, так как код выведен в консоль.`);
+    return true;
   }
 }
