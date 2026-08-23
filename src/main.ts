@@ -26,23 +26,11 @@ async function bootstrap() {
     }),
   );
 
-  const frontendUrl = configService.get<string>('FRONTEND_URL');
-  const allowedOrigins = [
-    'https://beranked.domcraft.digital',
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://127.0.0.1:5173',
-  ];
-
-  if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
-    allowedOrigins.push(frontendUrl);
-  }
-
   app.enableCors({
-    origin: allowedOrigins,
+    origin: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
-    allowedHeaders: 'Content-Type, Accept, Authorization',
+    allowedHeaders: 'Content-Type, Accept, Authorization, x-requested-with',
   });
 
   const port = configService.get<number>('PORT') || 3000;
