@@ -609,76 +609,147 @@ export class ScraperService {
       };
     });
 
-    // Умные рекомендации кастомных тегов из названия кейса, комбинаций слов и ниши
+    // =========================================================================
+    // УМНЫЙ СЕМАНТИЧЕСКИЙ ГЕНЕРАТОР ТЕГОВ (СЕМАНТИЧЕСКОЕ ЯДРО 50-100+ ТЕГОВ)
+    // =========================================================================
     const existingTagNames = new Set(project.tags.map((t) => t.tag.name.toLowerCase().trim()));
     const suggestedTagsSet = new Set<string>();
 
-    const rawTitle = `${project.title || ''} ${project.url || ''}`.toLowerCase();
-    
-    // 1. Популярные семантические связки по ключевым словам из названия
-    const keywordMap: Record<string, string[]> = {
-      логотип: ['разработка логотипа', 'логотип компании', 'логотипы', 'дизайн логотипа', 'логотип и айдентика'],
-      logotip: ['логотип', 'разработка логотипа', 'логотип компании', 'dizajn logotipa', 'logo design'],
-      'фирменный стиль': ['брендбук', 'айдентика', 'фирменный стиль компании', 'brand identity', 'гайдлайн'],
-      firmennyj: ['фирменный стиль', 'брендбук', 'фирменный стиль компании', 'brand identity'],
-      брендбук: ['брендбук компании', 'разработка брендбука', 'гайдлайн', 'айдентика бренда'],
-      brendbuk: ['брендбук', 'брендбук компании', 'brand identity', 'логотип и фирменный стиль'],
-      строитель: ['строительная компания', 'строительство', 'логотип строительной компании', 'брендбук строительство'],
-      stroitel: ['строительная компания', 'строительство', 'логотип строительной компании', 'брендбук строительство'],
-      производств: ['производство', 'логотип производство', 'брендбук производство', 'фирменный стиль производство'],
-      proizvodstv: ['производство', 'логотип производство', 'брендбук производство', 'фирменный стиль производство'],
-      недвижим: ['недвижимость', 'агентство недвижимости', 'девелопер', 'жк'],
-      nedvizhim: ['недвижимость', 'агентство недвижимости', 'девелопмент'],
-      интерьер: ['дизайн интерьера', 'interior design', 'визуализация интерьера', '3d интерьер'],
-      interer: ['дизайн интерьера', 'interior design', '3d visualization'],
-      сайт: ['дизайн сайта', 'веб-дизайн', 'landing page', 'ui/ux design', 'разработка сайта'],
-      landing: ['landing page', 'лендинг', 'веб-дизайн', 'ui/ux', 'дизайн сайта'],
-      упаковк: ['дизайн упаковки', 'упаковка', 'packaging design', 'этикетка'],
-      upakovk: ['дизайн упаковки', 'упаковка', 'packaging design'],
-      косметик: ['дизайн косметики', 'косметика', 'бьюти бренд', 'beauty branding'],
-      кафе: ['брендинг ресторана', 'логотип кафе', 'айдентика кофейни', 'меню'],
-      ресторан: ['брендинг ресторана', 'айдентика ресторана', 'логотип ресторана'],
-    };
+    const rawContext = `${project.title || ''} ${project.url || ''} ${Array.from(existingTagNames).join(' ')}`.toLowerCase();
 
-    for (const [key, relatedList] of Object.entries(keywordMap)) {
-      if (rawTitle.includes(key)) {
-        for (const rel of relatedList) {
-          if (!existingTagNames.has(rel.toLowerCase())) {
-            suggestedTagsSet.add(rel);
-          }
+    // 1. ОПРЕДЕЛЯЕМ НИШУ И ТЕМАТИКУ КЕЙСА
+    const isConstruction = /строител|stroitel|производств|proizvodstv|застройщ|девелоп|недвижим|nedvizhim|архитектур|construction|real estate|developer|architecture|building|industrial|manufacturing/.test(rawContext);
+    const isAuto = /авто|auto|машин|тюнинг|dealership|car|drive|rental|vehicle|motors|дилер/.test(rawContext);
+    const isFood = /ресторан|кафе|кофейн|еда|доставк|бар|меню|restaurant|cafe|coffee|food|bakery|bar|burger|pizza|kitchen/.test(rawContext);
+    const isBeauty = /косметик|бьюти|одежд|мод|салон красот|парфюм|beauty|cosmetic|fashion|skincare|apparel|clothing|spa/.test(rawContext);
+    const isWebUi = /сайт|лендинг|интернет-магазин|веб-дизайн|приложен|ui|ux|figma|landing|web|mobile app|website|dashboard|saas|app/.test(rawContext);
+    const is3d = /3d|render|blender|cinema|cgi|motion|анимаци|рендер|моушн/.test(rawContext);
+    const isMedical = /клиник|медицин|стоматолог|здоровь|врач|clinic|medical|dental|doctor|health|pharma/.test(rawContext);
+    const isFintech = /банк|финтех|крипт|инвестиц|юрист|fintech|bank|crypto|finance|invest|legal|consulting/.test(rawContext);
+    const isBranding = /логотип|logotip|брендбук|brendbuk|айдентик|ajdentik|фирменный стиль|firmennyj|brand|logo|identity|packaging|упаковк/.test(rawContext) || (!isWebUi && !is3d);
+
+    const addTags = (list: string[]) => {
+      for (const item of list) {
+        const clean = item.trim().toLowerCase().replace(/^#/, '');
+        if (clean && clean.length >= 2 && !existingTagNames.has(clean)) {
+          suggestedTagsSet.add(clean);
         }
       }
-    }
-
-    // 2. Нишевые пресеты
-    const allNichePresets: Record<string, string[]> = {
-      branding: ['brand identity', 'logo design', 'typography', 'packaging', 'visual identity', 'corporate identity', 'editorial design'],
-      ui: ['ui/ux', 'mobile app', 'figma', 'dashboard', 'landing page', 'web design', 'design system'],
-      '3d': ['3d render', 'blender', 'cinema 4d', 'octane render', 'cgi', 'motion design'],
-      photo: ['photography', 'art direction', 'photoshop', 'concept art'],
-      illustration: ['vector art', 'digital illustration', 'character design', 'poster design'],
     };
 
-    const projectContext = `${project.title} ${Array.from(existingTagNames).join(' ')}`.toLowerCase();
-    for (const [niche, keywords] of Object.entries(allNichePresets)) {
-      if (projectContext.includes(niche) || keywords.some((k) => projectContext.includes(k))) {
-        for (const kw of keywords) {
-          if (!existingTagNames.has(kw.toLowerCase())) {
-            suggestedTagsSet.add(kw);
-          }
-        }
+    // 2. БАЗОВЫЕ УСЛУГИ И ШИРОКИЕ ТЕГИ
+    if (isBranding) {
+      addTags([
+        'логотип', 'фирменный стиль', 'брендбук', 'айдентика', 'разработка логотипа',
+        'дизайн логотипа', 'логотип компании', 'фирменный стиль компании', 'брендбук компании',
+        'айдентика бренда', 'разработка брендбука', 'гайдлайн', 'логотипы', 'логотип и айдентика',
+        'логотип и фирменный стиль', 'полиграфия', 'векторная графика', 'типографика',
+        'brand identity', 'logo design', 'branding', 'corporate identity', 'visual identity',
+        'brand guideline', 'logotype', 'graphic design', 'logo designer', 'typography',
+        'brand design', 'vector logo', 'minimalist logo', 'modern branding', 'creative logo',
+        'dizajn logotipa', 'firmennyj stil', 'brendbuk', 'ajdentika', 'razrabotka logotipa', 'logotip'
+      ]);
+    }
+
+    if (isWebUi) {
+      addTags([
+        'дизайн сайта', 'веб-дизайн', 'разработка сайта', 'landing page', 'лендинг',
+        'дизайн интерфейса', 'мобильное приложение', 'ui/ux design', 'ux/ui', 'figma design',
+        'дизайн лендинга', 'редизайн сайта', 'интернет-магазин', 'дизайн интернет-магазина',
+        'web design', 'ui design', 'ux design', 'landing page design', 'mobile app design',
+        'website redesign', 'dashboard design', 'design system', 'responsive design',
+        'dizajn sajta', 'veb dizajn', 'lending', 'figma'
+      ]);
+    }
+
+    // 3. НИШЕВЫЕ СВЯЗКИ (ПЕРЕМНОЖЕНИЕ УСЛУГА × НИША)
+    if (isConstruction) {
+      addTags([
+        'строительная компания', 'строительство', 'логотип строительной компании',
+        'фирменный стиль строительной компании', 'брендбук строительной компании',
+        'айдентика строительной компании', 'логотип строительство', 'фирменный стиль строительство',
+        'брендбук строительство', 'айдентика строительство', 'производство',
+        'логотип производство', 'фирменный стиль производство', 'брендбук производство',
+        'айдентика производство', 'застройщик', 'логотип застройщика', 'девелопмент',
+        'логотип девелопмент', 'недвижимость', 'логотип недвижимость', 'архитектурное бюро',
+        'construction logo', 'construction branding', 'construction brand identity',
+        'real estate logo', 'real estate branding', 'industrial branding', 'manufacturing logo',
+        'developer branding', 'building logo', 'engineering branding', 'architecture branding',
+        'stroitelnaja kompanija', 'stroitelstvo', 'proizvodstvo', 'logotip stroitelnoj kompanii',
+        'firmennyj stil stroitelnoj kompanii', 'logotip stroitelstvo'
+      ]);
+    }
+
+    if (isAuto) {
+      addTags([
+        'автосалон', 'сайт автосалона', 'дизайн сайта автосалона', 'логотип автосалона',
+        'фирменный стиль автосалона', 'аренда авто', 'сайт аренды авто', 'автосервис',
+        'логотип автосервиса', 'тюнинг авто', 'автомобили', 'автодилер', 'продажа авто',
+        'car dealership website', 'dealership web design', 'automotive website', 'car rental website',
+        'automotive branding', 'car logo design', 'dealership ui/ux', 'car dealer app',
+        'dealership branding', 'vehicle branding', 'car website design', 'motors branding',
+        'sajt avtosalona', 'dizajn sajta avtosalona', 'avtosalon', 'avto', 'arenda avto'
+      ]);
+    }
+
+    if (isFood) {
+      addTags([
+        'брендинг ресторана', 'логотип ресторана', 'айдентика ресторана', 'логотип кафе',
+        'айдентика кафе', 'фирменный стиль ресторана', 'меню ресторана', 'упаковка еды',
+        'дизайн упаковки', 'кофейня', 'логотип кофейни', 'айдентика кофейни', 'доставка еды',
+        'restaurant branding', 'cafe branding', 'coffee shop branding', 'food packaging',
+        'restaurant logo', 'coffee logo', 'food brand identity', 'menu design', 'packaging design',
+        'brending restorana', 'logotip kafe', 'ajdentika kafe', 'kofejnja'
+      ]);
+    }
+
+    if (isBeauty) {
+      addTags([
+        'брендинг косметики', 'дизайн косметики', 'упаковка косметики', 'логотип салона красоты',
+        'айдентика салона красоты', 'фирменный стиль косметики', 'бьюти бренд', 'дизайн упаковки косметики',
+        'бренд одежды', 'логотип одежды', 'айдентика бренда одежды', 'fashion branding',
+        'beauty branding', 'cosmetics packaging', 'skincare branding', 'fashion logo',
+        'cosmetics logo', 'beauty logo design', 'apparel branding', 'clothing brand identity',
+        'brending kosmetiki', 'dizajn upakovki', 'salon krasoty', 'brend odezhdy'
+      ]);
+    }
+
+    if (is3d) {
+      addTags([
+        '3d render', '3d modeling', 'blender 3d', 'cinema 4d render', 'octane render',
+        '3d animation', 'cgi artist', 'motion graphics', 'motion design', '3d visualizer',
+        'product visualization', '3d typography', 'character design', '3d illustration',
+        '3д рендер', '3д моделирование', 'моушн дизайн', '3д визуализация', '3д графика'
+      ]);
+    }
+
+    if (isMedical) {
+      addTags([
+        'логотип клиники', 'айдентика клиники', 'фирменный стиль клиники', 'логотип стоматологии',
+        'айдентика стоматологии', 'медицинский брендинг', 'дизайн сайта клиники', 'медицинский центр',
+        'clinic branding', 'dental logo', 'medical brand identity', 'healthcare branding',
+        'dental branding', 'clinic logo design', 'medical logo', 'hospital branding'
+      ]);
+    }
+
+    if (isFintech) {
+      addTags([
+        'финтех брендинг', 'логотип банка', 'айдентика финтех', 'дизайн финтех приложения',
+        'крипто брендинг', 'логотип крипто', 'инвестиции брендинг', 'юридическая компания',
+        'fintech branding', 'banking logo', 'crypto brand identity', 'fintech app design',
+        'investment branding', 'financial logo', 'crypto branding', 'corporate identity fintech'
+      ]);
+    }
+
+    // 4. ДОПОЛНИТЕЛЬНЫЙ ПАРСИНГ СЛОВ ИЗ НАЗВАНИЯ (СЛОВА ИЗ 2-3 СИМВОЛОВ И БОЛЕЕ)
+    const titleWords = (project.title || '').toLowerCase().replace(/[^a-zа-я0-9\s]/gi, ' ').split(/\s+/).filter((w) => w.length >= 3);
+    for (const w of titleWords) {
+      if (!existingTagNames.has(w)) {
+        suggestedTagsSet.add(w);
       }
     }
 
-    // 3. Fallback универсальные теги
-    if (suggestedTagsSet.size < 4) {
-      const fallback = ['brand design', 'graphic designer', 'art direction', 'digital art', 'creative design'];
-      for (const f of fallback) {
-        if (!existingTagNames.has(f.toLowerCase())) suggestedTagsSet.add(f);
-      }
-    }
-
-    const suggestedTags = Array.from(suggestedTagsSet).slice(0, 10);
+    const suggestedTags = Array.from(suggestedTagsSet).slice(0, 100);
 
     return {
       activeProject: project,
