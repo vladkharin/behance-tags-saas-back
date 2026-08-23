@@ -365,11 +365,29 @@ export class ScraperService {
             await this.prisma.project.update({
               where: { id: projectId },
               data: {
+                title: latestData.name || project.title,
                 views: latestData.stats?.views?.all || 0,
                 appreciations: latestData.stats?.appreciations?.all || 0,
                 comments: latestData.stats?.comments?.all || 0,
               },
             });
+
+            // Автоматически синхронизируем обновленные родные теги с Behance
+            if (Array.isArray(latestData.tags)) {
+              for (const t of latestData.tags) {
+                const name = t.title.trim().toLowerCase();
+                const tagRecord = await this.prisma.tag.upsert({
+                  where: { name },
+                  update: {},
+                  create: { name },
+                });
+                await this.prisma.projectTag.upsert({
+                  where: { projectId_tagId: { projectId, tagId: tagRecord.id } },
+                  update: {},
+                  create: { projectId, tagId: tagRecord.id },
+                });
+              }
+            }
           }
 
           // 2. Проверяем позиции по каждому тегу
