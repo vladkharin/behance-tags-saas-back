@@ -591,39 +591,76 @@ export class ScraperService {
       };
     });
 
-    // Умные рекомендации кастомных тегов, не входящих в основные 10
-    const existingTagNames = new Set(project.tags.map((t) => t.tag.name.toLowerCase()));
+    // Умные рекомендации кастомных тегов из названия кейса, комбинаций слов и ниши
+    const existingTagNames = new Set(project.tags.map((t) => t.tag.name.toLowerCase().trim()));
+    const suggestedTagsSet = new Set<string>();
+
+    const rawTitle = `${project.title || ''} ${project.url || ''}`.toLowerCase();
+    
+    // 1. Популярные семантические связки по ключевым словам из названия
+    const keywordMap: Record<string, string[]> = {
+      логотип: ['разработка логотипа', 'логотип компании', 'логотипы', 'дизайн логотипа', 'логотип и айдентика'],
+      logotip: ['логотип', 'разработка логотипа', 'логотип компании', 'dizajn logotipa', 'logo design'],
+      'фирменный стиль': ['брендбук', 'айдентика', 'фирменный стиль компании', 'brand identity', 'гайдлайн'],
+      firmennyj: ['фирменный стиль', 'брендбук', 'фирменный стиль компании', 'brand identity'],
+      брендбук: ['брендбук компании', 'разработка брендбука', 'гайдлайн', 'айдентика бренда'],
+      brendbuk: ['брендбук', 'брендбук компании', 'brand identity', 'логотип и фирменный стиль'],
+      строитель: ['строительная компания', 'строительство', 'логотип строительной компании', 'брендбук строительство'],
+      stroitel: ['строительная компания', 'строительство', 'логотип строительной компании', 'брендбук строительство'],
+      производств: ['производство', 'логотип производство', 'брендбук производство', 'фирменный стиль производство'],
+      proizvodstv: ['производство', 'логотип производство', 'брендбук производство', 'фирменный стиль производство'],
+      недвижим: ['недвижимость', 'агентство недвижимости', 'девелопер', 'жк'],
+      nedvizhim: ['недвижимость', 'агентство недвижимости', 'девелопмент'],
+      интерьер: ['дизайн интерьера', 'interior design', 'визуализация интерьера', '3d интерьер'],
+      interer: ['дизайн интерьера', 'interior design', '3d visualization'],
+      сайт: ['дизайн сайта', 'веб-дизайн', 'landing page', 'ui/ux design', 'разработка сайта'],
+      landing: ['landing page', 'лендинг', 'веб-дизайн', 'ui/ux', 'дизайн сайта'],
+      упаковк: ['дизайн упаковки', 'упаковка', 'packaging design', 'этикетка'],
+      upakovk: ['дизайн упаковки', 'упаковка', 'packaging design'],
+      косметик: ['дизайн косметики', 'косметика', 'бьюти бренд', 'beauty branding'],
+      кафе: ['брендинг ресторана', 'логотип кафе', 'айдентика кофейни', 'меню'],
+      ресторан: ['брендинг ресторана', 'айдентика ресторана', 'логотип ресторана'],
+    };
+
+    for (const [key, relatedList] of Object.entries(keywordMap)) {
+      if (rawTitle.includes(key)) {
+        for (const rel of relatedList) {
+          if (!existingTagNames.has(rel.toLowerCase())) {
+            suggestedTagsSet.add(rel);
+          }
+        }
+      }
+    }
+
+    // 2. Нишевые пресеты
     const allNichePresets: Record<string, string[]> = {
       branding: ['brand identity', 'logo design', 'typography', 'packaging', 'visual identity', 'corporate identity', 'editorial design'],
-      ui: ['ui/ux', 'mobile app', 'figma', 'dashboard', 'landing page', 'web design', 'user experience', 'design system'],
-      '3d': ['3d render', 'blender', 'cinema 4d', 'octane render', 'cgi', 'motion design', '3d modeling'],
-      photo: ['photography', 'art direction', 'photoshop', 'retouching', 'concept art'],
+      ui: ['ui/ux', 'mobile app', 'figma', 'dashboard', 'landing page', 'web design', 'design system'],
+      '3d': ['3d render', 'blender', 'cinema 4d', 'octane render', 'cgi', 'motion design'],
+      photo: ['photography', 'art direction', 'photoshop', 'concept art'],
       illustration: ['vector art', 'digital illustration', 'character design', 'poster design'],
     };
 
-    const suggestedTagsSet = new Set<string>();
-    // Определяем сферу проекта по уже существующим тегам и заголовку
     const projectContext = `${project.title} ${Array.from(existingTagNames).join(' ')}`.toLowerCase();
-
     for (const [niche, keywords] of Object.entries(allNichePresets)) {
       if (projectContext.includes(niche) || keywords.some((k) => projectContext.includes(k))) {
         for (const kw of keywords) {
-          if (!existingTagNames.has(kw)) {
+          if (!existingTagNames.has(kw.toLowerCase())) {
             suggestedTagsSet.add(kw);
           }
         }
       }
     }
 
-    // Если ничего специфического не подобрано, добавляем универсальные популярные теги Behance
-    if (suggestedTagsSet.size < 3) {
-      const fallback = ['art direction', 'creative design', 'digital art', 'graphic design', 'behance portfolio'];
+    // 3. Fallback универсальные теги
+    if (suggestedTagsSet.size < 4) {
+      const fallback = ['brand design', 'graphic designer', 'art direction', 'digital art', 'creative design'];
       for (const f of fallback) {
-        if (!existingTagNames.has(f)) suggestedTagsSet.add(f);
+        if (!existingTagNames.has(f.toLowerCase())) suggestedTagsSet.add(f);
       }
     }
 
-    const suggestedTags = Array.from(suggestedTagsSet).slice(0, 6);
+    const suggestedTags = Array.from(suggestedTagsSet).slice(0, 10);
 
     return {
       activeProject: project,
