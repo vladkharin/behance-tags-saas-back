@@ -936,13 +936,18 @@ export class ScraperService {
       orderBy: { createdAt: 'asc' },
     });
 
-    const formatted: Record<string, any[]> = {};
+    const formatted: Record<string, Array<{ date: string; rank: number }>> = {};
     for (const entry of history) {
-      if (!formatted[entry.tag.name]) formatted[entry.tag.name] = [];
-      formatted[entry.tag.name].push({
-        date: entry.createdAt.toISOString().split('T')[0],
-        rank: entry.rank,
-      });
+      const tagName = entry.tag.name;
+      const dateStr = entry.createdAt.toISOString().split('T')[0];
+      if (!formatted[tagName]) formatted[tagName] = [];
+
+      const existingIdx = formatted[tagName].findIndex((item) => item.date === dateStr);
+      if (existingIdx !== -1) {
+        formatted[tagName][existingIdx].rank = entry.rank;
+      } else {
+        formatted[tagName].push({ date: dateStr, rank: entry.rank });
+      }
     }
     return { success: true, analytics: formatted };
   }
