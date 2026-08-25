@@ -920,13 +920,21 @@ export class ScraperService {
       return this.demoCache.data;
     }
 
-    const project = await this.prisma.project.findFirst({
+    let project = await this.prisma.project.findFirst({
       where: { tagPositionHistories: { some: {} } },
       orderBy: { tagPositionHistories: { _count: 'desc' } },
       include: {
         tags: { include: { tag: true } },
       },
     });
+
+    if (!project) {
+      project = await this.prisma.project.findFirst({
+        include: {
+          tags: { include: { tag: true } },
+        },
+      });
+    }
 
     if (project) {
       this.demoCache = {
