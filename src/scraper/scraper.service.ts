@@ -23,6 +23,82 @@ const PLAN_UPDATE_INTERVALS = {
   PRO_STREAM: 24, // 24 часа
 };
 
+const DEMO_PROJECT_ID = 'demo-showcase-project';
+
+const DEMO_SHOWCASE_PROJECT = {
+  id: DEMO_PROJECT_ID,
+  behanceId: '218492041',
+  title: 'LOOP - Motion Design & 3D Brand Showcase 2026',
+  url: 'https://www.behance.net/gallery/218492041/LOOP-Motion-Design-Festival',
+  views: 48920,
+  appreciations: 4150,
+  comments: 312,
+  userId: 'demo-user',
+  lastAnalyzedAt: new Date().toISOString(),
+  isScheduled: true,
+  analysisStatus: 'IDLE',
+  createdAt: '2026-08-01T10:00:00.000Z',
+  updatedAt: new Date().toISOString(),
+};
+
+const DEMO_SHOWCASE_TAGS_MATRIX = [
+  { tag: 'motion design', currentRank: 1, bestRank: 1, previousRank: 2, rankDelta: 1, onChart: true },
+  { tag: '3d animation', currentRank: 2, bestRank: 2, previousRank: 3, rankDelta: 1, onChart: true },
+  { tag: 'ui/ux', currentRank: 3, bestRank: 3, previousRank: 3, rankDelta: 0, onChart: true },
+  { tag: 'branding', currentRank: 4, bestRank: 4, previousRank: 5, rankDelta: 1, onChart: true },
+  { tag: 'graphic design', currentRank: 5, bestRank: 5, previousRank: 6, rankDelta: 1, onChart: true },
+  { tag: 'logotype', currentRank: 7, bestRank: 7, previousRank: 9, rankDelta: 2, onChart: true },
+  { tag: 'cyberpunk', currentRank: 8, bestRank: 8, previousRank: 10, rankDelta: 2, onChart: true },
+  { tag: 'art direction', currentRank: 10, bestRank: 10, previousRank: 12, rankDelta: 2, onChart: true },
+  { tag: '3d render', currentRank: 12, bestRank: 11, previousRank: 15, rankDelta: 3, onChart: false },
+  { tag: 'visual identity', currentRank: 14, bestRank: 12, previousRank: 18, rankDelta: 4, onChart: false },
+  { tag: 'web design', currentRank: 16, bestRank: 15, previousRank: 20, rankDelta: 4, onChart: false },
+  { tag: 'typography', currentRank: 21, bestRank: 19, previousRank: 25, rankDelta: 4, onChart: false },
+  { tag: 'poster design', currentRank: 25, bestRank: 22, previousRank: 30, rankDelta: 5, onChart: false },
+  { tag: 'cgi', currentRank: 28, bestRank: 24, previousRank: 32, rankDelta: 4, onChart: false },
+  { tag: 'figma', currentRank: 34, bestRank: 30, previousRank: 38, rankDelta: 4, onChart: false },
+  { tag: 'cinema 4d', currentRank: 42, bestRank: 38, previousRank: 45, rankDelta: 3, onChart: false },
+  { tag: 'octane render', currentRank: 48, bestRank: 42, previousRank: 52, rankDelta: 4, onChart: false },
+  { tag: 'blender 3d', currentRank: 55, bestRank: 50, previousRank: 60, rankDelta: 5, onChart: false },
+  { tag: 'digital art', currentRank: 63, bestRank: 58, previousRank: 68, rankDelta: 5, onChart: false },
+  { tag: 'after effects', currentRank: 71, bestRank: 65, previousRank: 75, rankDelta: 4, onChart: false },
+];
+
+const DEMO_SHOWCASE_SUGGESTED_TAGS = [
+  'motion design 3d', '3d animation showcase', 'cyberpunk ui', 'logotype 3d', 'branding festival',
+  'visual identity 2026', 'cgi motion graphics', 'abstract 3d render', 'creative art direction',
+  '3d typography', 'octane 3d animation', 'ui/ux motion', 'behance top 3d', 'futuristic branding',
+  'dizajn logotipa 3d', 'firmennyj stil motion', 'brending festivalya', '3d logo design',
+  'blender motion graphics', 'cinema 4d art', '3d brandbook', 'brand identity 3d'
+];
+
+function getDemoShowcaseHistory() {
+  const history: Record<string, Array<{ date: string; rank: number }>> = {};
+  const tagsTrendData: Record<string, number[]> = {
+    'motion design': [12, 11, 9, 8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1],
+    '3d animation': [18, 16, 15, 12, 10, 9, 7, 6, 5, 4, 3, 3, 2, 2],
+    'ui/ux': [10, 9, 8, 7, 6, 5, 5, 4, 4, 3, 3, 3, 3, 3],
+    'branding': [14, 13, 11, 10, 8, 7, 6, 5, 5, 4, 4, 5, 4, 4],
+    'graphic design': [16, 14, 12, 11, 9, 8, 7, 6, 5, 5, 5, 6, 5, 5],
+    'logotype': [20, 18, 16, 14, 12, 11, 9, 8, 8, 7, 7, 9, 7, 7],
+    'cyberpunk': [22, 20, 18, 15, 13, 11, 10, 9, 8, 8, 8, 10, 8, 8],
+    'art direction': [25, 22, 19, 17, 14, 12, 11, 10, 10, 10, 10, 12, 10, 10],
+  };
+
+  const today = new Date();
+  for (const [tag, ranks] of Object.entries(tagsTrendData)) {
+    history[tag] = ranks.map((rank, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (13 - i));
+      return {
+        date: d.toISOString().split('T')[0],
+        rank,
+      };
+    });
+  }
+  return history;
+}
+
 @Injectable()
 export class ScraperService {
   private readonly logger = new Logger(ScraperService.name);
@@ -560,6 +636,18 @@ export class ScraperService {
   }
 
   async getSingleProjectAnalytics(projectId: string, userId: string) {
+    if (projectId === DEMO_PROJECT_ID || projectId === 'demo' || projectId.includes('demo')) {
+      return {
+        activeProject: DEMO_SHOWCASE_PROJECT,
+        plan: 'PRO_STREAM' as any,
+        tagBalance: 9999,
+        lastAnalyzedAt: new Date().toISOString(),
+        tagsMatrix: DEMO_SHOWCASE_TAGS_MATRIX,
+        suggestedTags: DEMO_SHOWCASE_SUGGESTED_TAGS,
+        status: 'IDLE',
+      };
+    }
+
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, userId },
       include: {
@@ -830,6 +918,10 @@ export class ScraperService {
   }
 
   async getProjectAnalyticsHistory(projectId: string, userId: string) {
+    if (projectId === DEMO_PROJECT_ID || projectId === 'demo' || projectId.includes('demo')) {
+      return { success: true, analytics: getDemoShowcaseHistory() };
+    }
+
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, userId },
     });
@@ -861,6 +953,10 @@ export class ScraperService {
     tagName: string,
     state: boolean,
   ) {
+    if (projectId === DEMO_PROJECT_ID || projectId === 'demo' || projectId.includes('demo')) {
+      return { success: true };
+    }
+
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, userId },
     });
@@ -879,6 +975,10 @@ export class ScraperService {
   }
 
   async toggleSchedule(projectId: string, userId: string, state: boolean) {
+    if (projectId === DEMO_PROJECT_ID || projectId === 'demo' || projectId.includes('demo')) {
+      return DEMO_SHOWCASE_PROJECT;
+    }
+
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, userId },
     });
@@ -898,6 +998,10 @@ export class ScraperService {
     userId: string,
     state: boolean,
   ) {
+    if (projectId === DEMO_PROJECT_ID || projectId === 'demo' || projectId.includes('demo')) {
+      return { count: DEMO_SHOWCASE_TAGS_MATRIX.length };
+    }
+
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, userId },
     });
@@ -912,38 +1016,8 @@ export class ScraperService {
     });
   }
 
-  private demoCache: { data: any; expiresAt: number } | null = null;
-
   async getDemoProject() {
-    const now = Date.now();
-    if (this.demoCache && this.demoCache.expiresAt > now) {
-      return this.demoCache.data;
-    }
-
-    let project = await this.prisma.project.findFirst({
-      where: { tagPositionHistories: { some: {} } },
-      orderBy: { tagPositionHistories: { _count: 'desc' } },
-      include: {
-        tags: { include: { tag: true } },
-      },
-    });
-
-    if (!project) {
-      project = await this.prisma.project.findFirst({
-        include: {
-          tags: { include: { tag: true } },
-        },
-      });
-    }
-
-    if (project) {
-      this.demoCache = {
-        data: project,
-        expiresAt: now + 10 * 60 * 1000, // 10 минут
-      };
-    }
-
-    return project;
+    return DEMO_SHOWCASE_PROJECT;
   }
 
   async getAnalytics(userId: string) {
