@@ -42,9 +42,12 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=vladMatrixScraper777SafePassword
+      - PRISMA_STUDIO_HOST=prisma-studio
+      - PRISMA_STUDIO_PORT=5555
     depends_on:
       - postgres
       - redis
+      - prisma-studio
 
   # Prisma Studio (Защищена прокси-авторизацией через /admin/studio)
   prisma-studio:

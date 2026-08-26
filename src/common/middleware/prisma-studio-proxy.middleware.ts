@@ -23,6 +23,25 @@ export class PrismaStudioProxyMiddleware implements NestMiddleware {
         const path = req.originalUrl.replace(/^\/admin\/studio/, '');
         return path || '/';
       },
+      proxyErrorHandler: (err, res, next) => {
+        if (err && (err as any).code === 'ECONNREFUSED') {
+          res.status(530).send(`
+            <!DOCTYPE html>
+            <html>
+              <head><title>Prisma Studio Launching</title></head>
+              <body style="font-family: sans-serif; text-align: center; padding: 50px; background: #0f0f13; color: white;">
+                <h2>🔄 Prisma Studio поднимается...</h2>
+                <p style="opacity: 0.7;">Пожалуйста, обновите страницу через 5-10 секунд.</p>
+                <button onclick="location.reload()" style="padding: 10px 20px; background: #0057ff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">
+                  Обновить страницу
+                </button>
+              </body>
+            </html>
+          `);
+          return;
+        }
+        next(err);
+      },
     });
   }
 
