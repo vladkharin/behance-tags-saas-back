@@ -56,6 +56,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Redirect subpaths like /admin/studio to root /
+app.use((req, res, next) => {
+  if (req.path.startsWith('/admin/studio')) {
+    res.redirect('/');
+    return;
+  }
+  next();
+});
+
 // Proxy to Prisma Studio at root /
 app.use(
   '/',
