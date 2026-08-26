@@ -1,4 +1,4 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
@@ -48,6 +48,12 @@ import { BasicAuthMiddleware } from '../common/middleware/basic-auth.middleware'
 })
 export class ScraperModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(BasicAuthMiddleware).forRoutes('/admin/queues');
+    consumer
+      .apply(BasicAuthMiddleware)
+      .forRoutes(
+        { path: 'admin/queues', method: RequestMethod.ALL },
+        { path: 'admin/queues/*', method: RequestMethod.ALL },
+        { path: 'admin/queues/(.*)', method: RequestMethod.ALL },
+      );
   }
 }

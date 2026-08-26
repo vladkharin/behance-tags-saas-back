@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # База данных PostgreSQL
+  # База данных PostgreSQL (Защищена: доступ только локально/внутри сети)
   postgres:
     image: postgres:15-alpine
     container_name: behance_postgres
@@ -11,11 +11,11 @@ services:
       POSTGRES_PASSWORD: "2001"
       POSTGRES_DB: behance_tags_db
     ports:
-      - "0.0.0.0:5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # Кэш и очереди Redis (Защищенный)
+  # Кэш и очереди Redis (Защищенный паролем и локальным интерфейсом)
   redis:
     image: redis:7-alpine
     container_name: behance_redis
@@ -23,9 +23,9 @@ services:
     # Устанавливаем пароль при запуске
     command: ["redis-server", "--requirepass", "vladMatrixScraper777SafePassword"]
     ports:
-      - "0.0.0.0:6379:6379"
+      - "127.0.0.1:6379:6379"
 
-  # Наш NestJS бэкенд
+  # Наш NestJS бэкенд (Защищенные роуты /admin/queues и /admin/studio)
   api:
     build:
       context: .
@@ -41,20 +41,24 @@ services:
       - DATABASE_URL=postgresql://vladharin:2001@postgres:5432/behance_tags_db?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      # Прокидываем пароль в переменные окружения бэкенда
       - REDIS_PASSWORD=vladMatrixScraper777SafePassword
     depends_on:
       - postgres
       - redis
 
+  # Prisma Studio (Защищена прокси-авторизацией через /admin/studio)
   prisma-studio:
     image: behance-tags-saas-back-api 
+    container_name: behance_prisma_studio
+    restart: always
     working_dir: /app
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=postgresql://vladharin:2001@postgres:5432/behance_tags_db?schema=public
     ports:
-      - "5555:5555"
+      - "127.0.0.1:5555:5555"
     command: npx prisma studio --browser none --hostname 0.0.0.0
+    depends_on:
+      - postgres
 
 volumes:
   postgres_data:

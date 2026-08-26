@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NestMiddleware,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
@@ -14,18 +10,27 @@ export class BasicAuthMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
     const authHeader = req.headers['authorization'];
     if (!authHeader || !authHeader.startsWith('Basic ')) {
-      res.setHeader('WWW-Authenticate', 'Basic realm="BullBoard Admin"');
-      throw new UnauthorizedException('Authentication required for queues admin');
+      res.setHeader(
+        'WWW-Authenticate',
+        'Basic realm="Admin Area", charset="UTF-8"',
+      );
+      res.status(401).send('Authentication required for Admin area.');
+      return;
     }
 
     const base64Credentials = authHeader.split(' ')[1];
-    const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
+    const credentials = Buffer.from(base64Credentials, 'base64').toString(
+      'utf8',
+    );
     const [user, password] = credentials.split(':');
 
     const expectedUser =
-      this.configService.get<string>('BULL_BOARD_USER') || 'admin';
+      this.configService.get<string>('BULL_BOARD_USER') ||
+      this.configService.get<string>('ADMIN_USER') ||
+      'admin';
     const expectedPassword =
       this.configService.get<string>('BULL_BOARD_PASSWORD') ||
+      this.configService.get<string>('ADMIN_PASSWORD') ||
       'vladMatrixQueues2026SafeAdmin';
 
     const userBuffer = Buffer.from(user || '');
@@ -41,8 +46,12 @@ export class BasicAuthMiddleware implements NestMiddleware {
       crypto.timingSafeEqual(passBuffer, expPassBuffer);
 
     if (!isUserValid || !isPassValid) {
-      res.setHeader('WWW-Authenticate', 'Basic realm="BullBoard Admin"');
-      throw new UnauthorizedException('Invalid admin credentials');
+      res.setHeader(
+        'WWW-Authenticate',
+        'Basic realm="Admin Area", charset="UTF-8"',
+      );
+      res.status(401).send('Invalid admin credentials.');
+      return;
     }
 
     next();
