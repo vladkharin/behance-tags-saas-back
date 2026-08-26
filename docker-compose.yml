@@ -20,12 +20,11 @@ services:
     image: redis:7-alpine
     container_name: behance_redis
     restart: always
-    # Устанавливаем пароль при запуске
     command: ["redis-server", "--requirepass", "vladMatrixScraper777SafePassword"]
     ports:
       - "127.0.0.1:6379:6379"
 
-  # Наш NestJS бэкенд (Защищенные роуты /admin/queues и /admin/studio)
+  # Наш NestJS бэкенд (Защищенная очередь /admin/queues)
   api:
     build:
       context: .
@@ -42,14 +41,11 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=vladMatrixScraper777SafePassword
-      - PRISMA_STUDIO_HOST=prisma-studio
-      - PRISMA_STUDIO_PORT=5555
     depends_on:
       - postgres
       - redis
-      - prisma-studio
 
-  # Prisma Studio (Защищена прокси-авторизацией через /admin/studio)
+  # Внутренний сервис Prisma Studio (Работает во внутренней сети на порту 5554)
   prisma-studio:
     image: behance-tags-saas-back-api 
     container_name: behance_prisma_studio
@@ -57,11 +53,26 @@ services:
     working_dir: /app
     environment:
       - DATABASE_URL=postgresql://vladharin:2001@postgres:5432/behance_tags_db?schema=public
-    ports:
-      - "127.0.0.1:5555:5555"
-    command: npx prisma studio --browser none --hostname 0.0.0.0
+    command: npx prisma studio --browser none --hostname 0.0.0.0 --port 5554
     depends_on:
       - postgres
+
+  # Защищенный прокси Prisma Studio (Порт 5555 с HTTP Basic Auth)
+  prisma-studio-proxy:
+    image: behance-tags-saas-back-api
+    container_name: behance_prisma_studio_proxy
+    restart: always
+    working_dir: /app
+    ports:
+      - "5555:5555"
+    environment:
+      - PRISMA_STUDIO_HOST=prisma-studio
+      - PRISMA_STUDIO_TARGET_PORT=5554
+      - BULL_BOARD_USER=${BULL_BOARD_USER:-admin}
+      - BULL_BOARD_PASSWORD=${BULL_BOARD_PASSWORD:-vladMatrixQueues2026SafeAdmin}
+    command: node dist/src/studio-proxy.js
+    depends_on:
+      - prisma-studio
 
 volumes:
   postgres_data:
