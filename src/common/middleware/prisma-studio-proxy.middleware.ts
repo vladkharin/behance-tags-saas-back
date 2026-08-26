@@ -1,11 +1,15 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import { createProxyMiddleware } from 'http-proxy-middleware';
 import { ConfigService } from '@nestjs/config';
+import proxy from 'express-http-proxy';
 
 @Injectable()
 export class PrismaStudioProxyMiddleware implements NestMiddleware {
-  private proxy: ReturnType<typeof createProxyMiddleware>;
+  private proxyHandler: (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
 
   constructor(private readonly configService: ConfigService) {
     const targetHost =
@@ -14,17 +18,15 @@ export class PrismaStudioProxyMiddleware implements NestMiddleware {
     const targetPort =
       this.configService.get<string>('PRISMA_STUDIO_PORT') || '5555';
 
-    this.proxy = createProxyMiddleware({
-      target: `http://${targetHost}:${targetPort}`,
-      changeOrigin: true,
-      pathRewrite: {
-        '^/admin/studio': '',
+    this.proxyHandler = proxy(`${targetHost}:${targetPort}`, {
+      proxyReqPathResolver: (req) => {
+        const path = req.originalUrl.replace(/^\/admin\/studio/, '');
+        return path || '/';
       },
-      ws: true,
     });
   }
 
   use(req: Request, res: Response, next: NextFunction) {
-    this.proxy(req, res, next);
+    this.proxyHandler(req, res, next);
   }
 }
