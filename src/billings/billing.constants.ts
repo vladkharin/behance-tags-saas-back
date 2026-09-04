@@ -16,15 +16,15 @@ export interface FuelConfig {
 
 export const PLANS_CONFIG: Record<string, PlanConfig> = {
   DAILY_FRESH: {
-    priceRub: 890,
-    priceUsd: 9.99,
+    priceRub: 390,
+    priceUsd: 3.99,
     tags: 1500,
     label: 'Daily Fresh Plan',
     envOfferKey: 'LAVA_OFFER_ID_DAILY_FRESH',
   },
   PRO_STREAM: {
-    priceRub: 2250,
-    priceUsd: 24.99,
+    priceRub: 890,
+    priceUsd: 8.99,
     tags: 6000,
     label: 'Pro Stream Plan',
     envOfferKey: 'LAVA_OFFER_ID_PRO_STREAM',
@@ -33,15 +33,15 @@ export const PLANS_CONFIG: Record<string, PlanConfig> = {
 
 export const FUEL_CONFIG: Record<string, FuelConfig> = {
   '500': {
-    priceRub: 290,
-    priceUsd: 0.63,
+    priceRub: 149,
+    priceUsd: 1.49,
     tags: 500,
     label: 'Fuel Pack 500',
     envOfferKey: 'LAVA_OFFER_ID_500',
   },
   '2000': {
-    priceRub: 690,
-    priceUsd: 6.99,
+    priceRub: 390,
+    priceUsd: 3.99,
     tags: 2000,
     label: 'Fuel Pack 2000',
     envOfferKey: 'LAVA_OFFER_ID_2000',
